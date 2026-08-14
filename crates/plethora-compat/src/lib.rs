@@ -12,6 +12,7 @@
 //! transcribed from, and each is pinned by golden vectors generated from the
 //! real tool (see `tests/oracle/`).
 
+pub mod awk;
 pub mod gnusort;
 pub mod loess;
 pub mod randlib;
