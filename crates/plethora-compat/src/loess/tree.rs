@@ -132,7 +132,8 @@ impl KdTree {
             let mut leaf = count <= fc as isize || diam <= fd;
             if !leaf {
                 // Out of room for another split.
-                leaf = ncmax < self.nc + 2 || (nvmax as f64) < self.nv as f64 + self.vc as f64 / 2.0;
+                leaf =
+                    ncmax < self.nc + 2 || (nvmax as f64) < self.nv as f64 + self.vc as f64 / 2.0;
             }
 
             let mut split_at = 0;
@@ -234,7 +235,11 @@ impl KdTree {
     pub fn locate(&self, z: f64) -> usize {
         let mut j = 1;
         while self.a[j] != 0 {
-            j = if z <= self.xi[j] { self.lo[j] } else { self.hi[j] };
+            j = if z <= self.xi[j] {
+                self.lo[j]
+            } else {
+                self.hi[j]
+            };
         }
         j
     }
@@ -356,7 +361,9 @@ mod tests {
         // splitter actually hits: repeated x values are common in binned data.
         let mut state = 12345_u64;
         let mut next = || {
-            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             f64::from(((state >> 33) % 5) as u32)
         };
 
@@ -372,10 +379,16 @@ mod tests {
 
                 assert_eq!(p[pi[k]], sorted[k - 1], "n = {n}, k = {k}");
                 for i in 1..k {
-                    assert!(p[pi[i]] <= p[pi[k]], "left of k out of order, n = {n}, k = {k}");
+                    assert!(
+                        p[pi[i]] <= p[pi[k]],
+                        "left of k out of order, n = {n}, k = {k}"
+                    );
                 }
                 for i in k + 1..=n {
-                    assert!(p[pi[i]] >= p[pi[k]], "right of k out of order, n = {n}, k = {k}");
+                    assert!(
+                        p[pi[i]] >= p[pi[k]],
+                        "right of k out of order, n = {n}, k = {k}"
+                    );
                 }
                 // The permutation must stay a permutation.
                 let mut seen: Vec<usize> = pi[1..=n].to_vec();
@@ -408,7 +421,11 @@ mod tests {
     fn splitting_creates_two_cells_and_one_vertex() {
         let x: Vec<f64> = (0..16).map(f64::from).collect();
         let tree = KdTree::build(&x, 8, 0.0, 100, 100);
-        assert!(tree.nc >= 3, "expected at least one split, got nc = {}", tree.nc);
+        assert!(
+            tree.nc >= 3,
+            "expected at least one split, got nc = {}",
+            tree.nc
+        );
         assert_eq!(tree.a[1], 1, "the root splits on the only dimension");
         // Every leaf holds at most fc points. Counted signed: a split at the
         // last point leaves its hi son with an empty, inverted range.

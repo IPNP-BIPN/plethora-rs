@@ -312,7 +312,14 @@ mod tests {
     #[test]
     fn a_proper_pair_keeps_its_order() {
         let r1 = aln("r1", PAIRED | FIRST_MATE, Some("chr1"), 99, 149, 60);
-        let r2 = aln("r1", PAIRED | SECOND_MATE | REVERSE, Some("chr1"), 299, 349, 60);
+        let r2 = aln(
+            "r1",
+            PAIRED | SECOND_MATE | REVERSE,
+            Some("chr1"),
+            299,
+            349,
+            60,
+        );
         assert_eq!(
             bedpe(&r1, &r2).to_string(),
             "chr1\t99\t149\tchr1\t299\t349\tr1\t60\t+\t-"
@@ -323,7 +330,14 @@ mod tests {
     /// read 2 and carries read 2's strand.
     #[test]
     fn blocks_are_ordered_by_position_not_by_mate() {
-        let r1 = aln("c", PAIRED | FIRST_MATE | REVERSE, Some("chr1"), 899, 949, 60);
+        let r1 = aln(
+            "c",
+            PAIRED | FIRST_MATE | REVERSE,
+            Some("chr1"),
+            899,
+            949,
+            60,
+        );
         let r2 = aln("c", PAIRED | SECOND_MATE, Some("chr1"), 699, 749, 60);
         assert_eq!(
             bedpe(&r1, &r2).to_string(),
@@ -354,7 +368,14 @@ mod tests {
     #[test]
     fn the_score_is_the_minimum_mapping_quality() {
         let r1 = aln("b", PAIRED | FIRST_MATE, Some("chr1"), 99, 149, 60);
-        let r2 = aln("b", PAIRED | SECOND_MATE | REVERSE, Some("chr1"), 299, 349, 10);
+        let r2 = aln(
+            "b",
+            PAIRED | SECOND_MATE | REVERSE,
+            Some("chr1"),
+            299,
+            349,
+            10,
+        );
         assert_eq!(bedpe(&r1, &r2).score, 10);
 
         let r2 = aln("b", PAIRED | UNMAPPED | SECOND_MATE, None, 0, 0, 0);
@@ -367,7 +388,10 @@ mod tests {
         let r1 = aln("d", PAIRED | FIRST_MATE, Some("chr2"), 100, 150, 60);
         let r2 = aln("d", PAIRED | SECOND_MATE, Some("chr10"), 100, 150, 60);
         let out = bedpe(&r1, &r2);
-        assert_eq!(out.chrom1, "chr10", "string order, not numeric or reference id");
+        assert_eq!(
+            out.chrom1, "chr10",
+            "string order, not numeric or reference id"
+        );
         assert_eq!(out.chrom2, "chr2");
     }
 
@@ -375,7 +399,10 @@ mod tests {
     fn both_ends_unmapped_gives_an_empty_line() {
         let r1 = aln("e", PAIRED | UNMAPPED | FIRST_MATE, None, 0, 0, 0);
         let r2 = aln("e", PAIRED | UNMAPPED | SECOND_MATE, None, 0, 0, 0);
-        assert_eq!(bedpe(&r1, &r2).to_string(), ".\t-1\t-1\t.\t-1\t-1\te\t0\t.\t.");
+        assert_eq!(
+            bedpe(&r1, &r2).to_string(),
+            ".\t-1\t-1\t.\t-1\t-1\te\t0\t.\t."
+        );
     }
 
     #[test]
@@ -383,7 +410,14 @@ mod tests {
         let r1 = aln("r1", PAIRED | FIRST_MATE, Some("chr1"), 99, 149, 60);
         assert_eq!(bed(&r1).unwrap().to_string(), "chr1\t99\t149\tr1/1\t60\t+");
 
-        let r2 = aln("r1", PAIRED | SECOND_MATE | REVERSE, Some("chr1"), 299, 349, 60);
+        let r2 = aln(
+            "r1",
+            PAIRED | SECOND_MATE | REVERSE,
+            Some("chr1"),
+            299,
+            349,
+            60,
+        );
         assert_eq!(bed(&r2).unwrap().to_string(), "chr1\t299\t349\tr1/2\t60\t-");
 
         let u = aln("r3", PAIRED | UNMAPPED | SECOND_MATE, None, 0, 0, 0);
@@ -394,7 +428,14 @@ mod tests {
     /// appends both suffixes rather than choosing, so this does too.
     #[test]
     fn both_pair_bits_append_both_suffixes() {
-        let r = aln("x", PAIRED | FIRST_MATE | SECOND_MATE, Some("chr1"), 0, 50, 60);
+        let r = aln(
+            "x",
+            PAIRED | FIRST_MATE | SECOND_MATE,
+            Some("chr1"),
+            0,
+            50,
+            60,
+        );
         assert_eq!(bed(&r).unwrap().name, "x/1/2");
     }
 
@@ -402,9 +443,23 @@ mod tests {
     fn the_iterator_pairs_adjacent_records() {
         let records = vec![
             aln("r1", PAIRED | FIRST_MATE, Some("chr1"), 99, 149, 60),
-            aln("r1", PAIRED | SECOND_MATE | REVERSE, Some("chr1"), 299, 349, 60),
+            aln(
+                "r1",
+                PAIRED | SECOND_MATE | REVERSE,
+                Some("chr1"),
+                299,
+                349,
+                60,
+            ),
             aln("r2", PAIRED | FIRST_MATE, Some("chr1"), 499, 549, 60),
-            aln("r2", PAIRED | SECOND_MATE | REVERSE, Some("chr1"), 899, 949, 60),
+            aln(
+                "r2",
+                PAIRED | SECOND_MATE | REVERSE,
+                Some("chr1"),
+                899,
+                949,
+                60,
+            ),
         ];
         let mut it = BedpeIter::new(records.into_iter());
         assert_eq!(it.next().unwrap().name, "r1");
@@ -420,7 +475,14 @@ mod tests {
         let records = vec![
             aln("r1", PAIRED | FIRST_MATE, Some("chr1"), 99, 149, 60),
             aln("r1", PAIRED | SECOND_MATE, Some("chr1"), 299, 349, 60),
-            aln("r1", PAIRED | SUPPLEMENTARY | FIRST_MATE, Some("chr1"), 400, 420, 60),
+            aln(
+                "r1",
+                PAIRED | SUPPLEMENTARY | FIRST_MATE,
+                Some("chr1"),
+                400,
+                420,
+                60,
+            ),
             aln("r2", PAIRED | FIRST_MATE, Some("chr1"), 499, 549, 60),
             aln("r2", PAIRED | SECOND_MATE, Some("chr1"), 899, 949, 60),
         ];
@@ -431,10 +493,17 @@ mod tests {
         // is r2's two reads. One real pair survives out of two.
         let second = it.next().unwrap();
         assert_eq!(second.name, "r2");
-        assert_eq!(it.orphans(), 1, "the supplementary record counts as an orphan");
+        assert_eq!(
+            it.orphans(),
+            1,
+            "the supplementary record counts as an orphan"
+        );
 
         // Filtering first restores the expected pairing.
-        let filtered: Vec<Aln> = records.into_iter().filter(|a| is_pairable(a.flags)).collect();
+        let filtered: Vec<Aln> = records
+            .into_iter()
+            .filter(|a| is_pairable(a.flags))
+            .collect();
         let mut it = BedpeIter::new(filtered.into_iter());
         assert_eq!(it.next().unwrap().name, "r1");
         assert_eq!(it.next().unwrap().name, "r2");

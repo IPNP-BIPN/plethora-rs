@@ -49,23 +49,19 @@ fn project(record: &noodles_bam::Record, names: &[String]) -> io::Result<Aln> {
 
     let mapped = flags & super::bamtobed::UNMAPPED == 0;
     let (chrom, start, end) = if mapped {
-        let id = record
-            .reference_sequence_id()
-            .transpose()?
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "mapped record has no reference"))?;
-        let chrom = names
-            .get(id)
-            .cloned()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "reference id out of range"))?;
+        let id = record.reference_sequence_id().transpose()?.ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "mapped record has no reference")
+        })?;
+        let chrom = names.get(id).cloned().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "reference id out of range")
+        })?;
 
-        let start = record
-            .alignment_start()
-            .transpose()?
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "mapped record has no position"))?;
-        let end = record
-            .alignment_end()
-            .transpose()?
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "mapped record has no end"))?;
+        let start = record.alignment_start().transpose()?.ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "mapped record has no position")
+        })?;
+        let end = record.alignment_end().transpose()?.ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "mapped record has no end")
+        })?;
 
         // BED is zero-based half-open; noodles positions are one-based inclusive.
         (

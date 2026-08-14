@@ -9,9 +9,9 @@
 //! are no faces, and what remains is a Hermite cubic through the two endpoint
 //! values and their two derivatives.
 
+use super::Sizing;
 use super::fit::{VertexFit, fit_vertices};
 use super::tree::KdTree;
-use super::Sizing;
 
 /// `ehg128` for one predictor: evaluate the interpolant at `z`.
 ///
@@ -185,7 +185,10 @@ mod tests {
 
         let rough: f64 = y.windows(2).map(|w| (w[1] - w[0]).abs()).sum();
         let smooth: f64 = fitted.windows(2).map(|w| (w[1] - w[0]).abs()).sum();
-        assert!(smooth < rough / 10.0, "smoothed {smooth} against raw {rough}");
+        assert!(
+            smooth < rough / 10.0,
+            "smoothed {smooth} against raw {rough}"
+        );
     }
 
     #[test]

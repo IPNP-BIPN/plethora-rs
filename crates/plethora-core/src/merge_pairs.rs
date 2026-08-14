@@ -187,7 +187,9 @@ pub fn measure<I: Iterator<Item = String>>(lines: I) -> FragmentStats {
     }
     mean /= n as f64;
     // sprintf("%.0f") rounds half to even, which is what Rust's {:.0} does.
-    let mean: i64 = format!("{mean:.0}").parse().expect("a rounded mean is an integer");
+    let mean: i64 = format!("{mean:.0}")
+        .parse()
+        .expect("a rounded mean is an integer");
 
     // Population variance, against the rounded mean.
     let mut sd = 0.0_f64;
@@ -197,7 +199,9 @@ pub fn measure<I: Iterator<Item = String>>(lines: I) -> FragmentStats {
     }
     sd /= n as f64;
     let sd = sd.sqrt();
-    let sd: i64 = format!("{sd:.0}").parse().expect("a rounded deviation is an integer");
+    let sd: i64 = format!("{sd:.0}")
+        .parse()
+        .expect("a rounded deviation is an integer");
 
     FragmentStats {
         mean,
@@ -226,7 +230,9 @@ pub fn inner_distance_for(line: &str, stats: &FragmentStats) -> i64 {
     rng.set_seed_from_phrase(phrase.as_bytes());
     let draw = rng.gennor(stats.mean as f64, stats.sd as f64) / 2.0;
 
-    let rounded: i64 = format!("{draw:.0}").parse().expect("a rounded draw is an integer");
+    let rounded: i64 = format!("{draw:.0}")
+        .parse()
+        .expect("a rounded draw is an integer");
     rounded.max(0)
 }
 
@@ -287,7 +293,11 @@ where
             // of the reference. That is upstream's behaviour and the intersect
             // stage drops the overhang anyway.
             start = start.max(0);
-            writeln!(out, "{chrom}\t{start}\t{end}\t{}\t{}\t{strand}", p.name, p.score)?;
+            writeln!(
+                out,
+                "{chrom}\t{start}\t{end}\t{}\t{}\t{strand}",
+                p.name, p.score
+            )?;
         }
     }
     out.flush()
@@ -306,7 +316,9 @@ where
 /// Panics if the input has no proper pairs; see [`measure`].
 pub fn run(path: &Path) -> io::Result<FragmentStats> {
     let read_lines = || -> io::Result<_> {
-        Ok(BufReader::new(File::open(path)?).lines().map_while(Result::ok))
+        Ok(BufReader::new(File::open(path)?)
+            .lines()
+            .map_while(Result::ok))
     };
 
     let stats = measure(read_lines()?);
@@ -322,7 +334,11 @@ pub fn run(path: &Path) -> io::Result<FragmentStats> {
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "expected a .bed file"))?
     ));
 
-    emit(read_lines()?, &stats, BufWriter::new(File::create(out_path)?))?;
+    emit(
+        read_lines()?,
+        &stats,
+        BufWriter::new(File::create(out_path)?),
+    )?;
     Ok(stats)
 }
 
@@ -373,7 +389,10 @@ mod tests {
         let p = BedpeLine::parse(&l).unwrap();
         assert_eq!(p.inner_distance(), 850);
         assert!(!p.is_a_proper_pair(800), "beyond the first-pass ceiling");
-        assert!(p.is_a_proper_pair(900), "within a wider second-pass ceiling");
+        assert!(
+            p.is_a_proper_pair(900),
+            "within a wider second-pass ceiling"
+        );
     }
 
     /// Overlapping reads short-circuit to proper, even though the inner
@@ -389,17 +408,30 @@ mod tests {
     #[test]
     fn a_proper_pair_collapses_to_one_span() {
         let l = line_of(L("chr1", 100, 150, "chr1", 300, 350, "+", "-"));
-        let stats = FragmentStats { mean: 200, sd: 30, max_inner_distance: 350, n: 10 };
+        let stats = FragmentStats {
+            mean: 200,
+            sd: 30,
+            max_inner_distance: 350,
+            n: 10,
+        };
         let mut out = Vec::new();
         emit(std::iter::once(l), &stats, &mut out).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), "chr1\t100\t350\tread\t60\t+\n");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "chr1\t100\t350\tread\t60\t+\n"
+        );
     }
 
     /// A broken pair becomes two reads, each pushed outwards on its own strand.
     #[test]
     fn a_broken_pair_becomes_two_extended_reads() {
         let l = line_of(L("chr1", 100, 150, "chr1", 90000, 90050, "+", "-"));
-        let stats = FragmentStats { mean: 200, sd: 30, max_inner_distance: 350, n: 10 };
+        let stats = FragmentStats {
+            mean: 200,
+            sd: 30,
+            max_inner_distance: 350,
+            n: 10,
+        };
         let extension = inner_distance_for(&l, &stats);
         assert!(extension > 0);
 
@@ -409,8 +441,14 @@ mod tests {
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines.len(), 2);
         // Forward read grows at its end, reverse read grows at its start.
-        assert_eq!(lines[0], format!("chr1\t100\t{}\tread\t60\t+", 150 + extension));
-        assert_eq!(lines[1], format!("chr1\t{}\t90050\tread\t60\t-", 90000 - extension));
+        assert_eq!(
+            lines[0],
+            format!("chr1\t100\t{}\tread\t60\t+", 150 + extension)
+        );
+        assert_eq!(
+            lines[1],
+            format!("chr1\t{}\t90050\tread\t60\t-", 90000 - extension)
+        );
     }
 
     /// An unmapped end contributes no line at all, so a half-mapped pair yields
@@ -418,7 +456,12 @@ mod tests {
     #[test]
     fn an_unmapped_end_emits_nothing() {
         let l = line_of(L(".", -1, -1, "chr1", 300, 350, ".", "+"));
-        let stats = FragmentStats { mean: 200, sd: 30, max_inner_distance: 350, n: 10 };
+        let stats = FragmentStats {
+            mean: 200,
+            sd: 30,
+            max_inner_distance: 350,
+            n: 10,
+        };
         let mut out = Vec::new();
         emit(std::iter::once(l), &stats, &mut out).unwrap();
         assert_eq!(String::from_utf8(out).unwrap().lines().count(), 1);
@@ -428,7 +471,12 @@ mod tests {
     #[test]
     fn extension_clamps_at_the_chromosome_start() {
         let l = line_of(L("chr1", 5, 20, "chr1", 90000, 90050, "-", "+"));
-        let stats = FragmentStats { mean: 400, sd: 50, max_inner_distance: 650, n: 10 };
+        let stats = FragmentStats {
+            mean: 400,
+            sd: 50,
+            max_inner_distance: 650,
+            n: 10,
+        };
         let mut out = Vec::new();
         emit(std::iter::once(l.clone()), &stats, &mut out).unwrap();
         let text = String::from_utf8(out).unwrap();
@@ -442,11 +490,19 @@ mod tests {
     /// before it. That is the whole point of seeding from the line's MD5.
     #[test]
     fn the_extension_is_deterministic_per_line() {
-        let stats = FragmentStats { mean: 317, sd: 45, max_inner_distance: 542, n: 10 };
+        let stats = FragmentStats {
+            mean: 317,
+            sd: 45,
+            max_inner_distance: 542,
+            n: 10,
+        };
         let a = line_of(L("chr1", 100, 150, "chr1", 90000, 90050, "+", "-"));
         let b = line_of(L("chr1", 200, 250, "chr1", 90000, 90050, "+", "-"));
 
-        assert_eq!(inner_distance_for(&a, &stats), inner_distance_for(&a, &stats));
+        assert_eq!(
+            inner_distance_for(&a, &stats),
+            inner_distance_for(&a, &stats)
+        );
         // Interleaving another draw must not shift the answer.
         let first = inner_distance_for(&a, &stats);
         let _ = inner_distance_for(&b, &stats);
@@ -456,7 +512,12 @@ mod tests {
     #[test]
     fn the_extension_is_never_negative() {
         // A distribution wide enough that half a draw often comes out below zero.
-        let stats = FragmentStats { mean: 10, sd: 500, max_inner_distance: 2510, n: 10 };
+        let stats = FragmentStats {
+            mean: 10,
+            sd: 500,
+            max_inner_distance: 2510,
+            n: 10,
+        };
         for i in 0..200 {
             let l = line_of(L("chr1", i, i + 50, "chr1", 90000, 90050, "+", "-"));
             assert!(inner_distance_for(&l, &stats) >= 0);

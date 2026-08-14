@@ -18,7 +18,10 @@ struct Lcg(u64);
 
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 11
     }
 
@@ -44,7 +47,15 @@ fn corpus_sam() -> String {
     let mut rng = Lcg(0x0bed_0001);
     // Names chosen so string ordering differs from reference-id ordering.
     let chroms = ["chr1", "chr2", "chr10", "chrX"];
-    let cigars = ["50M", "10S40M", "40M10S", "25M100N25M", "20M5D30M", "20M5I25M", "5H50M"];
+    let cigars = [
+        "50M",
+        "10S40M",
+        "40M10S",
+        "25M100N25M",
+        "20M5D30M",
+        "20M5I25M",
+        "5H50M",
+    ];
 
     let mut sam = String::from("@HD\tVN:1.6\tSO:queryname\n");
     for c in chroms {
@@ -85,12 +96,16 @@ fn corpus_sam() -> String {
                 sam.push_str(&format!(
                     "{name}\t73\t{c1}\t{p1}\t{q1}\t{cig1}\t*\t0\t0\t{seq}\t{qual}\n"
                 ));
-                sam.push_str(&format!("{name}\t133\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}\n"));
+                sam.push_str(&format!(
+                    "{name}\t133\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}\n"
+                ));
             }
             // Both unmapped.
             9 => {
                 sam.push_str(&format!("{name}\t77\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}\n"));
-                sam.push_str(&format!("{name}\t141\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}\n"));
+                sam.push_str(&format!(
+                    "{name}\t141\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}\n"
+                ));
             }
             // Both mapped, with the strands varying.
             _ => {
@@ -173,9 +188,15 @@ fn bedpe_matches_bedtools() {
     assert_eq!(expected, expected_split, "-split changed the -bedpe output");
 
     let records: Vec<Aln> = read_bam(&bam).expect("read bam");
-    let got: Vec<String> = BedpeIter::new(records.into_iter()).map(|r| r.to_string()).collect();
+    let got: Vec<String> = BedpeIter::new(records.into_iter())
+        .map(|r| r.to_string())
+        .collect();
 
-    assert_eq!(got.len(), expected.len(), "line count differs from bedtools");
+    assert_eq!(
+        got.len(),
+        expected.len(),
+        "line count differs from bedtools"
+    );
     for (i, (g, e)) in got.iter().zip(&expected).enumerate() {
         assert_eq!(g, e, "line {i} differs from bedtools");
     }
@@ -192,9 +213,17 @@ fn bed_matches_bedtools() {
     let expected = bedtools(&[], &bam);
 
     let records: Vec<Aln> = read_bam(&bam).expect("read bam");
-    let got: Vec<String> = records.iter().filter_map(bed).map(|r| r.to_string()).collect();
+    let got: Vec<String> = records
+        .iter()
+        .filter_map(bed)
+        .map(|r| r.to_string())
+        .collect();
 
-    assert_eq!(got.len(), expected.len(), "line count differs from bedtools");
+    assert_eq!(
+        got.len(),
+        expected.len(),
+        "line count differs from bedtools"
+    );
     for (i, (g, e)) in got.iter().zip(&expected).enumerate() {
         assert_eq!(g, e, "line {i} differs from bedtools");
     }
@@ -213,8 +242,7 @@ fn namesort_matches_samtools() {
 
     // Shuffle the corpus by writing records in a scrambled order.
     let sam = corpus_sam();
-    let (header, body): (Vec<&str>, Vec<&str>) =
-        sam.lines().partition(|l| l.starts_with('@'));
+    let (header, body): (Vec<&str>, Vec<&str>) = sam.lines().partition(|l| l.starts_with('@'));
     let mut rng = Lcg(0x5caff01d);
     let mut body: Vec<&str> = body;
     for i in (1..body.len()).rev() {

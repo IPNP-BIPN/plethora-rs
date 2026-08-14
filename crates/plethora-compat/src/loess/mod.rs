@@ -76,7 +76,10 @@ mod tests {
         let s = Sizing::new(53, 0.75, 0.2, 2);
         assert_eq!(s.nf, 39, "floor(53 * 0.75)");
         assert_eq!(s.fc, 7, "floor(53 * 0.2 * 0.75)");
-        assert_eq!(s.k, 3, "a quadratic in one predictor has three coefficients");
+        assert_eq!(
+            s.k, 3,
+            "a quadratic in one predictor has three coefficients"
+        );
     }
 
     #[test]

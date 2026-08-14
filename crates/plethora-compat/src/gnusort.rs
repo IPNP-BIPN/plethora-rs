@@ -107,7 +107,11 @@ impl<'a> Number<'a> {
             fraction = &s[frac_start..i];
         }
 
-        Self { negative, integer, fraction }
+        Self {
+            negative,
+            integer,
+            fraction,
+        }
     }
 
     /// True when every digit is zero, so that `-0` and `0` compare equal.
@@ -150,8 +154,20 @@ pub fn numeric_cmp(a: &[u8], b: &[u8]) -> Ordering {
 
     match (x.is_zero(), y.is_zero()) {
         (true, true) => return Ordering::Equal,
-        (true, false) => return if y.negative { Ordering::Greater } else { Ordering::Less },
-        (false, true) => return if x.negative { Ordering::Less } else { Ordering::Greater },
+        (true, false) => {
+            return if y.negative {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            };
+        }
+        (false, true) => {
+            return if x.negative {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            };
+        }
         (false, false) => {}
     }
 

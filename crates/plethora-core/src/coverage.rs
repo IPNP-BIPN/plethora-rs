@@ -93,8 +93,12 @@ pub fn make_bed(
 
     match pairing {
         Pairing::Paired => {
-            let pairable: Vec<Aln> = records.into_iter().filter(|a| is_pairable(a.flags)).collect();
-            let sorted_records = namesort::sort_by_name(pairable, namesort::DEFAULT_RUN_RECORDS, tmp_dir)?;
+            let pairable: Vec<Aln> = records
+                .into_iter()
+                .filter(|a| is_pairable(a.flags))
+                .collect();
+            let sorted_records =
+                namesort::sort_by_name(pairable, namesort::DEFAULT_RUN_RECORDS, tmp_dir)?;
 
             let bedpe = path(".bed");
             let mut writer = BufWriter::new(File::create(&bedpe)?);
@@ -148,7 +152,10 @@ pub fn make_bed(
     merge::merge_sum(permuted, 5, BufWriter::new(File::create(&coverage)?))?;
 
     let read_depth = path("_read_depth.bed");
-    write_read_depth(lines_of(&coverage)?, BufWriter::new(File::create(&read_depth)?))?;
+    write_read_depth(
+        lines_of(&coverage)?,
+        BufWriter::new(File::create(&read_depth)?),
+    )?;
 
     // Upstream removes these two and keeps the rest.
     let _ = std::fs::remove_file(&edited);
@@ -210,7 +217,9 @@ where
 
 /// Reads a file as lines, skipping ones that fail to decode.
 fn lines_of(path: &Path) -> io::Result<impl Iterator<Item = String>> {
-    Ok(BufReader::new(File::open(path)?).lines().map_while(Result::ok))
+    Ok(BufReader::new(File::open(path)?)
+        .lines()
+        .map_while(Result::ok))
 }
 
 #[cfg(test)]

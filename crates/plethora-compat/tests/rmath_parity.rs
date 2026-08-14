@@ -37,7 +37,10 @@ fn round_to_two_digits_matches_r() {
         );
         checked += 1;
     }
-    assert!(checked > 1000, "expected the full corpus, saw {checked} rows");
+    assert!(
+        checked > 1000,
+        "expected the full corpus, saw {checked} rows"
+    );
 }
 
 #[test]
@@ -53,5 +56,8 @@ fn formatting_matches_write_table() {
         );
         checked += 1;
     }
-    assert!(checked > 20, "expected the write corpus, saw {checked} rows");
+    assert!(
+        checked > 20,
+        "expected the write corpus, saw {checked} rows"
+    );
 }

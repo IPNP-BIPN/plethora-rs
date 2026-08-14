@@ -90,7 +90,11 @@ pub fn fround(x: f64, digits: f64) -> f64 {
 
     let du = xu - x;
     let dd = x - xd;
-    sgn * if du < dd || (i10 % 2.0 == 1.0 && du == dd) { xu } else { xd }
+    sgn * if du < dd || (i10 % 2.0 == 1.0 && du == dd) {
+        xu
+    } else {
+        xd
+    }
 }
 
 /// R's `R_pow_di`: `x^n` by binary exponentiation.
@@ -174,7 +178,11 @@ pub fn format_as_r(x: f64) -> String {
         return "NaN".to_string();
     }
     if x.is_infinite() {
-        return if x > 0.0 { "Inf".to_string() } else { "-Inf".to_string() };
+        return if x > 0.0 {
+            "Inf".to_string()
+        } else {
+            "-Inf".to_string()
+        };
     }
     if x == 0.0 {
         // Covers -0.0, which R spells without the sign.
@@ -185,7 +193,9 @@ pub fn format_as_r(x: f64) -> String {
 
     // 15 significant digits, which is what R's `digits` is worth here.
     let sci15 = format!("{:.14e}", x.abs());
-    let (mantissa, exponent) = sci15.split_once('e').expect("scientific form has an exponent");
+    let (mantissa, exponent) = sci15
+        .split_once('e')
+        .expect("scientific form has an exponent");
     let kpower: i32 = exponent.parse().expect("exponent is an integer");
 
     // Significant digits actually needed, after dropping trailing zeros.
@@ -193,7 +203,11 @@ pub fn format_as_r(x: f64) -> String {
     let nsig = digits.trim_end_matches('0').len().max(1);
 
     // Width of "1.234e+05" style.
-    let exp_digits = exponent.trim_start_matches(['+', '-']).trim_start_matches('0').len().max(2);
+    let exp_digits = exponent
+        .trim_start_matches(['+', '-'])
+        .trim_start_matches('0')
+        .len()
+        .max(2);
     let sci_width = neg + nsig + usize::from(nsig > 1) + 2 + exp_digits;
 
     // Width of "123.4" style.

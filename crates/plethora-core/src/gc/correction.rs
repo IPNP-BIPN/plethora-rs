@@ -78,7 +78,9 @@ pub enum ModelError {
     /// R warns "span too small. fewer data values than degrees of freedom" and
     /// carries on into an out-of-bounds read its own source marks with a
     /// FIXME. Refusing is the only defensible reading of that.
-    #[error("only {bins} GC bin(s) qualified, which is fewer than the {needed} a local quadratic needs")]
+    #[error(
+        "only {bins} GC bin(s) qualified, which is fewer than the {needed} a local quadratic needs"
+    )]
     TooFewBins { bins: usize, needed: usize },
 }
 
@@ -148,7 +150,10 @@ pub fn fit_model(rows: &[(String, f64, f64)]) -> Result<GcModel, ModelError> {
     // smallest input R fits without complaint.
     let needed = 8;
     if by_bin.len() < needed {
-        return Err(ModelError::TooFewBins { bins: by_bin.len(), needed });
+        return Err(ModelError::TooFewBins {
+            bins: by_bin.len(),
+            needed,
+        });
     }
 
     // group_by orders the bins ascending, and the loess reads them in that order.
@@ -261,7 +266,10 @@ fn median(values: &mut [f64]) -> f64 {
 /// # Errors
 /// Returns an error if writing fails.
 pub fn write_table<W: Write>(rows: &[Row], mut out: W) -> io::Result<()> {
-    writeln!(out, "domain\tcoverage\tpercent.gc\tk.gc\tcorrected.coverage")?;
+    writeln!(
+        out,
+        "domain\tcoverage\tpercent.gc\tk.gc\tcorrected.coverage"
+    )?;
     for r in rows {
         writeln!(
             out,
@@ -293,7 +301,11 @@ pub fn output_name(input: &str) -> String {
             .enumerate()
             .all(|(i, &p)| p == b'.' || bytes[start + i] == p);
         if matches {
-            return format!("{}_gc_correct.txt{}", &input[..start], &input[start + pattern.len()..]);
+            return format!(
+                "{}_gc_correct.txt{}",
+                &input[..start],
+                &input[start + pattern.len()..]
+            );
         }
     }
     input.to_string()
@@ -309,16 +321,32 @@ mod tests {
     fn the_two_conserved_patterns_differ() {
         assert!(is_conserved("baseline_1_1", true));
         assert!(is_conserved("uc001abc", true));
-        assert!(!is_conserved("NBPF1_uc_CON1", true), "anchored: must start with it");
-        assert!(is_conserved("NBPF1_uc_CON1", false), "unanchored: contains it");
+        assert!(
+            !is_conserved("NBPF1_uc_CON1", true),
+            "anchored: must start with it"
+        );
+        assert!(
+            is_conserved("NBPF1_uc_CON1", false),
+            "unanchored: contains it"
+        );
         assert!(!is_conserved("NBPF1_CON1_1", false));
     }
 
     #[test]
     fn the_factor_is_flat_outside_the_window() {
-        let model = GcModel { bins: vec![(0.3, 1.1), (0.4, 1.2), (0.5, 1.3)] };
-        assert_eq!(model.factor_for(0.1), 1.1, "below the window: the first factor");
-        assert_eq!(model.factor_for(0.9), 1.3, "above the window: the last factor");
+        let model = GcModel {
+            bins: vec![(0.3, 1.1), (0.4, 1.2), (0.5, 1.3)],
+        };
+        assert_eq!(
+            model.factor_for(0.1),
+            1.1,
+            "below the window: the first factor"
+        );
+        assert_eq!(
+            model.factor_for(0.9),
+            1.3,
+            "above the window: the last factor"
+        );
         assert_eq!(model.factor_for(0.4), 1.2);
     }
 
@@ -326,7 +354,9 @@ mod tests {
     /// rather than no answer.
     #[test]
     fn an_unmatched_bin_inside_the_window_gets_one() {
-        let model = GcModel { bins: vec![(0.3, 1.1), (0.5, 1.3)] };
+        let model = GcModel {
+            bins: vec![(0.3, 1.1), (0.5, 1.3)],
+        };
         assert_eq!(model.factor_for(0.4), 1.0);
     }
 
@@ -353,11 +383,19 @@ mod tests {
         ];
         // Eight qualifying bins.
         for i in 0..8 {
-            rows.push((format!("baseline_{i}"), 30.0 + f64::from(i), 0.30 + f64::from(i) * 0.01));
+            rows.push((
+                format!("baseline_{i}"),
+                30.0 + f64::from(i),
+                0.30 + f64::from(i) * 0.01,
+            ));
         }
 
         let model = fit_model(&rows).expect("eight bins is enough");
-        assert_eq!(model.bins.len(), 8, "only the qualifying bins reach the fit");
+        assert_eq!(
+            model.bins.len(),
+            8,
+            "only the qualifying bins reach the fit"
+        );
         assert!(model.bins.iter().all(|(gc, _)| *gc >= 0.30 && *gc <= 0.37));
     }
 
@@ -380,7 +418,13 @@ mod tests {
         // Deliberately supplied in descending order.
         let rows: Vec<(String, f64, f64)> = (0..8)
             .rev()
-            .map(|i| (format!("baseline_{i}"), 30.0 + f64::from(i), 0.30 + f64::from(i) * 0.01))
+            .map(|i| {
+                (
+                    format!("baseline_{i}"),
+                    30.0 + f64::from(i),
+                    0.30 + f64::from(i) * 0.01,
+                )
+            })
             .collect();
         let model = fit_model(&rows).expect("eight bins");
         let order: Vec<f64> = model.bins.iter().map(|(gc, _)| *gc).collect();
@@ -411,7 +455,10 @@ mod tests {
         let gc: HashMap<String, f64> = [("domA::chr1:0-12".to_string(), 0.4)].into_iter().collect();
         let err = correct(&read_depth, &gc).unwrap_err();
         assert_eq!(err, ModelError::EmptyJoin);
-        assert!(err.to_string().contains("nameOnly"), "the message must name the fix");
+        assert!(
+            err.to_string().contains("nameOnly"),
+            "the message must name the fix"
+        );
     }
 
     #[test]

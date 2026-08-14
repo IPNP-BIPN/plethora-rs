@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # The suite is built so every differential test skips when its reference tool
+  # is absent. This job proves that: it runs with nothing installed, so a
+  # contributor without the bioinformatics stack sees the same green.
+  bare:
+    name: Test without the reference tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+
+      - name: Test
+        run: cargo test --workspace
+
+  # The tests that matter: each stage against the tool it replaces. A green here
+  # means the port reproduces samtools, bedtools, GNU sort, awk, Perl and R on
+  # this runner's versions.
+  differential:
+    name: Test against the reference tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install samtools, bedtools and cutadapt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y samtools bedtools cutadapt
+
+      - name: Install R and dplyr
+        run: |
+          sudo apt-get install -y r-base
+          Rscript -e 'install.packages(c("dplyr", "tibble"), repos = "https://cloud.r-project.org")'
+
+      - name: Install Math::Random into the project-local oracle library
+        run: |
+          sudo apt-get install -y cpanminus
+          env -u PERL5LIB cpanm --notest -l .oracle/perl5 Math::Random
+
+      - name: Record the versions the comparison is against
+        run: |
+          samtools --version | head -1
+          bedtools --version
+          cutadapt --version
+          sort --version | head -1
+          R --version | head -1
+          perl -I.oracle/perl5/lib/perl5 -MMath::Random \
+            -e 'print "Math::Random $Math::Random::VERSION\n"'
+
+      # GNU sort is `sort` here; the tests look for `gsort`, which is what it is
+      # called on macOS where coreutils is installed alongside the BSD one.
+      - name: Provide gsort
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          ln -s "$(command -v sort)" "$HOME/.local/bin/gsort"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Test
+        run: cargo test --workspace -- --nocapture
+
+  # The published minimum, checked rather than claimed.
+  msrv:
+    name: Minimum supported Rust version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read rust-version from the workspace manifest
+        id: msrv
+        run: |
+          version=$(grep -m1 '^rust-version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --all-targets

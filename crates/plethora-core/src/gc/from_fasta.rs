@@ -87,7 +87,11 @@ impl GcRow {
     /// The line as the Perl prints it, with Perl's own number formatting.
     #[must_use]
     pub fn to_line(&self) -> String {
-        format!("{}\t{}", self.name, format_g(self.counts.fraction(), PERL_PRECISION))
+        format!(
+            "{}\t{}",
+            self.name,
+            format_g(self.counts.fraction(), PERL_PRECISION)
+        )
     }
 }
 
@@ -115,7 +119,10 @@ pub fn gc_from_fasta<R: BufRead>(input: R) -> io::Result<Vec<GcRow>> {
             // from 2.27 on; see `build_model`.
             let name = header.to_string();
             let slot = *index.entry(name.clone()).or_insert_with(|| {
-                rows.push(GcRow { name, counts: GcCounts::default() });
+                rows.push(GcRow {
+                    name,
+                    counts: GcCounts::default(),
+                });
                 rows.len() - 1
             });
             current = Some(slot);
@@ -225,11 +232,17 @@ mod tests {
     /// Perl's number formatting, which is %.15g and not R's rule.
     #[test]
     fn numbers_are_spelled_the_way_perl_spells_them() {
-        let row = GcRow { name: "d".into(), counts: counts("GCA") };
+        let row = GcRow {
+            name: "d".into(),
+            counts: counts("GCA"),
+        };
         // 2/3 at fifteen significant digits.
         assert_eq!(row.to_line(), "d\t0.666666666666667");
 
-        let row = GcRow { name: "d".into(), counts: counts("GCAT") };
+        let row = GcRow {
+            name: "d".into(),
+            counts: counts("GCAT"),
+        };
         assert_eq!(row.to_line(), "d\t0.5");
     }
 
@@ -240,7 +253,10 @@ mod tests {
         let mut c = GcCounts::default();
         c.push_line(&b"G".repeat(348));
         c.push_line(&b"A".repeat(652));
-        let row = GcRow { name: "baseline_1_1".into(), counts: c };
+        let row = GcRow {
+            name: "baseline_1_1".into(),
+            counts: c,
+        };
         assert_eq!(row.to_line(), "baseline_1_1\t0.348");
     }
 }

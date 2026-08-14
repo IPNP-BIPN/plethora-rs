@@ -77,13 +77,20 @@ pub fn format_g(value: f64, precision: usize) -> String {
     let mut s = if exponent < -4 || exponent >= i32::try_from(p).unwrap_or(i32::MAX) {
         // %e with precision p - 1, then a two-digit exponent as C writes it.
         let raw = format!("{:.*e}", p - 1, value);
-        let (mantissa, exp) = raw.split_once('e').expect("scientific form has an exponent");
+        let (mantissa, exp) = raw
+            .split_once('e')
+            .expect("scientific form has an exponent");
         let mantissa = strip_trailing_zeros(mantissa);
         let exp: i32 = exp.parse().expect("integer exponent");
-        format!("{mantissa}e{}{:02}", if exp < 0 { '-' } else { '+' }, exp.abs())
+        format!(
+            "{mantissa}e{}{:02}",
+            if exp < 0 { '-' } else { '+' },
+            exp.abs()
+        )
     } else {
         // %f with precision p - 1 - X.
-        let decimals = usize::try_from(i32::try_from(p).unwrap_or(i32::MAX) - 1 - exponent).unwrap_or(0);
+        let decimals =
+            usize::try_from(i32::try_from(p).unwrap_or(i32::MAX) - 1 - exponent).unwrap_or(0);
         strip_trailing_zeros(&format!("{value:.decimals$}"))
     };
 

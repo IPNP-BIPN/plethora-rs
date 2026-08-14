@@ -84,7 +84,15 @@ pub fn dqrdc(x: &mut [f64], ldx: usize, n: usize, p: usize, qraux: &mut [f64], j
 /// `x` and `qraux` must come from [`dqrdc`]. `x` is taken mutably because the
 /// Fortran borrows the diagonal to hold the Householder pivot and restores it;
 /// the matrix is unchanged on return.
-pub fn dqrsl_qty(x: &mut [f64], ldx: usize, n: usize, k: usize, qraux: &[f64], y: &[f64], qty: &mut [f64]) {
+pub fn dqrsl_qty(
+    x: &mut [f64],
+    ldx: usize,
+    n: usize,
+    k: usize,
+    qraux: &[f64],
+    y: &[f64],
+    qty: &mut [f64],
+) {
     let ju = k.min(n - 1);
 
     if ju == 0 {
@@ -537,7 +545,10 @@ mod tests {
 
         let ny: f64 = y.iter().map(|v| v * v).sum();
         let nq: f64 = qty.iter().map(|v| v * v).sum();
-        assert!((ny - nq).abs() < 1e-12, "an orthogonal map preserves the norm");
+        assert!(
+            (ny - nq).abs() < 1e-12,
+            "an orthogonal map preserves the norm"
+        );
     }
 
     /// The decomposition must leave the matrix it borrowed unchanged.
@@ -565,7 +576,9 @@ mod tests {
         let (mut s, mut e, mut work) = (vec![0.0; 4], vec![0.0; 3], vec![0.0; 3]);
         let mut u = vec![0.0; 9];
         let mut v = vec![0.0; 9];
-        let info = dsvdc(&mut x, 3, 3, 3, &mut s, &mut e, &mut u, 3, &mut v, 3, &mut work, 21);
+        let info = dsvdc(
+            &mut x, 3, 3, 3, &mut s, &mut e, &mut u, 3, &mut v, 3, &mut work, 21,
+        );
 
         assert_eq!(info, 0);
         assert!((s[0] - 5.0).abs() < 1e-12);
@@ -581,7 +594,9 @@ mod tests {
         let (mut s, mut e, mut work) = (vec![0.0; 4], vec![0.0; 3], vec![0.0; 3]);
         let mut u = vec![0.0; 9];
         let mut v = vec![0.0; 9];
-        let info = dsvdc(&mut x, 3, 3, 3, &mut s, &mut e, &mut u, 3, &mut v, 3, &mut work, 21);
+        let info = dsvdc(
+            &mut x, 3, 3, 3, &mut s, &mut e, &mut u, 3, &mut v, 3, &mut work, 21,
+        );
         assert_eq!(info, 0);
 
         for i in 1..=3 {
@@ -606,7 +621,9 @@ mod tests {
         let (mut s, mut e, mut work) = (vec![0.0; 4], vec![0.0; 3], vec![0.0; 3]);
         let mut u = vec![0.0; 9];
         let mut v = vec![0.0; 9];
-        let _ = dsvdc(&mut x, 3, 3, 3, &mut s, &mut e, &mut u, 3, &mut v, 3, &mut work, 21);
+        let _ = dsvdc(
+            &mut x, 3, 3, 3, &mut s, &mut e, &mut u, 3, &mut v, 3, &mut work, 21,
+        );
         assert!(s[0] >= s[1] && s[1] >= s[2]);
         assert!(s[2] >= 0.0);
     }
@@ -620,7 +637,9 @@ mod tests {
         let (mut s, mut e, mut work) = (vec![0.0; 4], vec![0.0; 3], vec![0.0; 3]);
         let mut u = vec![0.0; 9];
         let mut v = vec![0.0; 9];
-        let info = dsvdc(&mut x, 3, 3, 3, &mut s, &mut e, &mut u, 3, &mut v, 3, &mut work, 21);
+        let info = dsvdc(
+            &mut x, 3, 3, 3, &mut s, &mut e, &mut u, 3, &mut v, 3, &mut work, 21,
+        );
         assert_eq!(info, 0);
         assert!(s[2] < 1e-14, "expected a zero singular value, got {}", s[2]);
     }

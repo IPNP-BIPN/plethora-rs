@@ -22,7 +22,10 @@ struct Lcg(u64);
 
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 11
     }
 
@@ -63,7 +66,9 @@ fn corpus_fasta() -> String {
         let len = 60 + rng.below(200) as usize;
         let mut seq = String::new();
         for j in 0..len {
-            seq.push(char::from(alphabet[rng.below(alphabet.len() as u64) as usize]));
+            seq.push(char::from(
+                alphabet[rng.below(alphabet.len() as u64) as usize],
+            ));
             // Wrap, so the per-line accumulation is exercised.
             if j % 60 == 59 {
                 seq.push('\n');
@@ -110,8 +115,14 @@ fn gc_from_fasta_matches_the_perl() {
     let mut soft_masked = 0;
     let mut ambiguous = 0;
     for row in &rows {
-        let (_, value) = row.to_line().split_once('\t').map(|(a, b)| (a.to_string(), b.to_string())).unwrap();
-        let want = expected.get(&row.name).unwrap_or_else(|| panic!("{} missing from the Perl output", row.name));
+        let (_, value) = row
+            .to_line()
+            .split_once('\t')
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .unwrap();
+        let want = expected
+            .get(&row.name)
+            .unwrap_or_else(|| panic!("{} missing from the Perl output", row.name));
         assert_eq!(&value, want, "{}: GC fraction differs", row.name);
         soft_masked += row.counts.soft_masked;
         ambiguous += row.counts.ambiguous;
@@ -121,8 +132,14 @@ fn gc_from_fasta_matches_the_perl() {
         "corpus: {} sequences, {soft_masked} soft-masked and {ambiguous} ambiguous bases counted as GC",
         rows.len()
     );
-    assert!(soft_masked > 100, "the corpus must exercise the lowercase reading");
-    assert!(ambiguous > 100, "the corpus must exercise the ambiguity-code reading");
+    assert!(
+        soft_masked > 100,
+        "the corpus must exercise the lowercase reading"
+    );
+    assert!(
+        ambiguous > 100,
+        "the corpus must exercise the ambiguity-code reading"
+    );
 }
 
 /// A read-depth table and a GC table shaped like the real ones: mostly
@@ -159,7 +176,10 @@ fn corpus_tables() -> (Vec<(String, f64)>, HashMap<String, f64>) {
         let name = format!("NBPF{}_CON1_{i}", 1 + i % 20);
         let percent = 0.25 + rng.below(400) as f64 / 1000.0;
         let copies = 1 + rng.below(12);
-        depth.push((name.clone(), 15.0 * copies as f64 + rng.below(300) as f64 / 100.0));
+        depth.push((
+            name.clone(),
+            15.0 * copies as f64 + rng.below(300) as f64 / 100.0,
+        ));
         gc.insert(name, percent);
     }
 
@@ -190,7 +210,12 @@ fn gc_correction_matches_the_r() {
     let mut depth_text = String::new();
     for (d, c) in &depth {
         use std::fmt::Write as _;
-        writeln!(depth_text, "{d}\t{}", plethora_compat::awk::print_number(*c)).expect("format");
+        writeln!(
+            depth_text,
+            "{d}\t{}",
+            plethora_compat::awk::print_number(*c)
+        )
+        .expect("format");
     }
     std::fs::write(&depth_path, &depth_text).expect("write depth");
     // Written the way gc_from_fasta.pl writes it, at %.15g. Not cosmetic:
@@ -257,7 +282,10 @@ fn gc_correction_matches_the_r() {
         .skip(1)
         .map(|l| {
             let f: Vec<&str> = l.split('\t').collect();
-            (f[0].to_string(), f[1..].iter().map(|s| (*s).to_string()).collect())
+            (
+                f[0].to_string(),
+                f[1..].iter().map(|s| (*s).to_string()).collect(),
+            )
         })
         .collect();
 
@@ -294,7 +322,10 @@ fn gc_correction_matches_the_r() {
             let rel = (got - want_value).abs() / want_value.abs().max(1e-300);
             if rel > worst_rel {
                 worst_rel = rel;
-                worst_where = format!("{} {label}: got {got:.17e}, want {want_value:.17e}", row.domain);
+                worst_where = format!(
+                    "{} {label}: got {got:.17e}, want {want_value:.17e}",
+                    row.domain
+                );
             }
         }
     }
@@ -318,7 +349,10 @@ fn the_vendored_oracles_are_upstreams_scripts() {
     if r.exists() {
         let text = std::fs::read_to_string(&r).expect("read");
         assert!(text.contains("loess(y ~ x)"), "the oracle must fit a loess");
-        assert!(text.contains("min.gc <- 0.2"), "the oracle must use the 0.2 floor");
+        assert!(
+            text.contains("min.gc <- 0.2"),
+            "the oracle must use the 0.2 floor"
+        );
         assert!(
             text.contains(r#"grepl("^((baseline)|(uc))", domain)"#),
             "the oracle must use the anchored pattern for the model"
@@ -442,7 +476,11 @@ fn build_model_matches_bedtools_getfasta() {
 
         assert_eq!(rows.len(), expected.len(), "domain count differs");
         for row in &rows {
-            let (_, value) = row.to_line().split_once('\t').map(|(a, b)| (a.to_string(), b.to_string())).unwrap();
+            let (_, value) = row
+                .to_line()
+                .split_once('\t')
+                .map(|(a, b)| (a.to_string(), b.to_string()))
+                .unwrap();
             assert_eq!(
                 &value,
                 expected.get(&row.name).expect("domain present"),
@@ -450,6 +488,9 @@ fn build_model_matches_bedtools_getfasta() {
                 row.name
             );
         }
-        println!("build_model: {} domains match bedtools getfasta and gc_from_fasta.pl", rows.len());
+        println!(
+            "build_model: {} domains match bedtools getfasta and gc_from_fasta.pl",
+            rows.len()
+        );
     }
 }

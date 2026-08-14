@@ -61,7 +61,18 @@ fn run_cutadapt(dir: &Path, r1: &Path, r2: &Path) -> (PathBuf, PathBuf) {
     let o1 = dir.join("cutadapt_1.fastq.gz");
     let o2 = dir.join("cutadapt_2.fastq.gz");
     let out = Command::new("cutadapt")
-        .args(["-a", "XXX", "-A", "XXX", "-q", "10", "--minimum-length", "80", "--trim-n", "-o"])
+        .args([
+            "-a",
+            "XXX",
+            "-A",
+            "XXX",
+            "-q",
+            "10",
+            "--minimum-length",
+            "80",
+            "--trim-n",
+            "-o",
+        ])
         .arg(&o1)
         .arg("-p")
         .arg(&o2)
@@ -78,10 +89,7 @@ fn run_cutadapt(dir: &Path, r1: &Path, r2: &Path) -> (PathBuf, PathBuf) {
 }
 
 /// How many reads differ, and by how many bases in total.
-fn compare(
-    ours: &[(String, String, String)],
-    theirs: &[(String, String, String)],
-) -> (usize, i64) {
+fn compare(ours: &[(String, String, String)], theirs: &[(String, String, String)]) -> (usize, i64) {
     assert_eq!(ours.len(), theirs.len(), "read count differs");
     let mut differing = 0;
     let mut base_delta = 0_i64;
@@ -167,7 +175,10 @@ fn detection_reports_what_it_changes() {
     // should be small; on a real library it would not be.
     if ours.len() == theirs.len() {
         let (differing, delta) = compare(&ours, &theirs);
-        println!("detect: {differing} of {} reads differ ({delta:+} bases)", ours.len());
+        println!(
+            "detect: {differing} of {} reads differ ({delta:+} bases)",
+            ours.len()
+        );
     }
 
     assert!(summary.pairs_in > 0, "nothing was read");

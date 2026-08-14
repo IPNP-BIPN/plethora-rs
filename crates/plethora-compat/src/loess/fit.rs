@@ -58,7 +58,10 @@ pub fn local_fit(
     psi: &mut [usize],
 ) -> VertexFit {
     let n = x.len();
-    assert!(nf <= n && nf > 0, "neighbourhood size {nf} out of range for {n} points");
+    assert!(
+        nf <= n && nf > 0,
+        "neighbourhood size {nf} out of range for {n} points"
+    );
 
     let k = match degree {
         0 => 1,
@@ -100,7 +103,10 @@ pub fn local_fit(
         let u = 1.0 - w[i] * w[i] * w[i];
         w[i] = (1.0 * (u * u * u)).sqrt();
     }
-    assert!(w[1..=nf].iter().any(|v| *v != 0.0), "all neighbourhood weights vanished at q = {q}");
+    assert!(
+        w[1..=nf].iter().any(|v| *v != 0.0),
+        "all neighbourhood weights vanished at q = {q}"
+    );
 
     // Design matrix, nf by k, column-major.
     let mut b = vec![0.0; nf * k];
@@ -172,7 +178,10 @@ pub fn local_fit(
         &mut work,
         21,
     );
-    assert_eq!(info, 0, "the singular value decomposition did not converge at q = {q}");
+    assert_eq!(
+        info, 0,
+        "the singular value decomposition did not converge at q = {q}"
+    );
 
     let tol = sigma[0] * (100.0 * MACHEP);
     let singular = sigma[k - 1] <= tol;
@@ -248,7 +257,11 @@ mod tests {
 
         let fit = local_fit(0.5, &x, &y, 30, 0.75, 2, &mut psi);
         assert!((fit.value - 4.0).abs() < 1e-10, "value {}", fit.value);
-        assert!((fit.derivative - 2.0).abs() < 1e-9, "derivative {}", fit.derivative);
+        assert!(
+            (fit.derivative - 2.0).abs() < 1e-9,
+            "derivative {}",
+            fit.derivative
+        );
         assert!(!fit.singular);
     }
 
@@ -256,12 +269,19 @@ mod tests {
     #[test]
     fn recovers_a_parabola() {
         let x: Vec<f64> = (0..60).map(|i| f64::from(i) / 60.0).collect();
-        let y: Vec<f64> = x.iter().map(|v| 1.0 - 4.0 * (v - 0.5) * (v - 0.5)).collect();
+        let y: Vec<f64> = x
+            .iter()
+            .map(|v| 1.0 - 4.0 * (v - 0.5) * (v - 0.5))
+            .collect();
         let mut psi: Vec<usize> = (0..=x.len()).collect();
 
         let fit = local_fit(0.5, &x, &y, 45, 0.75, 2, &mut psi);
         assert!((fit.value - 1.0).abs() < 1e-10, "value {}", fit.value);
-        assert!(fit.derivative.abs() < 1e-9, "derivative at the apex {}", fit.derivative);
+        assert!(
+            fit.derivative.abs() < 1e-9,
+            "derivative at the apex {}",
+            fit.derivative
+        );
     }
 
     /// Constant data gives a constant fit and a zero slope.
@@ -281,7 +301,10 @@ mod tests {
     #[test]
     fn degree_changes_the_fit() {
         let x: Vec<f64> = (0..60).map(|i| f64::from(i) / 60.0).collect();
-        let y: Vec<f64> = x.iter().map(|v| 1.0 - 4.0 * (v - 0.5) * (v - 0.5)).collect();
+        let y: Vec<f64> = x
+            .iter()
+            .map(|v| 1.0 - 4.0 * (v - 0.5) * (v - 0.5))
+            .collect();
 
         let mut psi1: Vec<usize> = (0..=x.len()).collect();
         let linear = local_fit(0.5, &x, &y, 45, 0.75, 1, &mut psi1);

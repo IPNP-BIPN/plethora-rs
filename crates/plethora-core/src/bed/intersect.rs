@@ -52,7 +52,10 @@ impl Interval {
         if self.rest.is_empty() {
             format!("{}\t{}\t{}", self.chrom, self.start, self.end)
         } else {
-            format!("{}\t{}\t{}\t{}", self.chrom, self.start, self.end, self.rest)
+            format!(
+                "{}\t{}\t{}\t{}",
+                self.chrom, self.start, self.end, self.rest
+            )
         }
     }
 
@@ -164,7 +167,12 @@ where
         for candidate in &cache {
             let overlap = feature.overlap(candidate);
             if overlap > 0 {
-                writeln!(out, "{}\t{}\t{overlap}", feature.to_line(), candidate.to_line())?;
+                writeln!(
+                    out,
+                    "{}\t{}\t{overlap}",
+                    feature.to_line(),
+                    candidate.to_line()
+                )?;
                 hits += 1;
             }
         }
@@ -189,7 +197,11 @@ mod tests {
             &mut out,
         )
         .expect("intersect");
-        String::from_utf8(out).unwrap().lines().map(String::from).collect()
+        String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(String::from)
+            .collect()
     }
 
     #[test]
@@ -211,20 +223,32 @@ mod tests {
     /// downstream has an entry for it.
     #[test]
     fn an_uncovered_interval_still_produces_a_row() {
-        let out = run(&["chr1\t500\t600\tdomC\t255\t-"], &["chr1\t100\t200\tr1\t60\t+"]);
-        assert_eq!(out, ["chr1\t500\t600\tdomC\t255\t-\t.\t-1\t-1\t.\t-1\t.\t0"]);
+        let out = run(
+            &["chr1\t500\t600\tdomC\t255\t-"],
+            &["chr1\t100\t200\tr1\t60\t+"],
+        );
+        assert_eq!(
+            out,
+            ["chr1\t500\t600\tdomC\t255\t-\t.\t-1\t-1\t.\t-1\t.\t0"]
+        );
     }
 
     /// Book-ended intervals share no base, so bedtools does not count them.
     #[test]
     fn touching_intervals_do_not_intersect() {
-        let out = run(&["chr1\t100\t200\tdomA\t255\t+"], &["chr1\t200\t300\tr1\t60\t+"]);
+        let out = run(
+            &["chr1\t100\t200\tdomA\t255\t+"],
+            &["chr1\t200\t300\tr1\t60\t+"],
+        );
         assert!(out[0].ends_with("\t.\t-1\t-1\t.\t-1\t.\t0"));
     }
 
     #[test]
     fn different_chromosomes_never_overlap() {
-        let out = run(&["chr1\t100\t200\tdomA\t255\t+"], &["chr2\t100\t200\tr1\t60\t+"]);
+        let out = run(
+            &["chr1\t100\t200\tdomA\t255\t+"],
+            &["chr2\t100\t200\tr1\t60\t+"],
+        );
         assert!(out[0].ends_with("\t0"));
         assert_eq!(out.len(), 1);
     }
@@ -234,7 +258,10 @@ mod tests {
     #[test]
     fn a_read_can_serve_several_overlapping_domains() {
         let out = run(
-            &["chr1\t100\t300\tdomA\t255\t+", "chr1\t200\t400\tdomB\t255\t+"],
+            &[
+                "chr1\t100\t300\tdomA\t255\t+",
+                "chr1\t200\t400\tdomB\t255\t+",
+            ],
             &["chr1\t150\t350\tr1\t60\t+"],
         );
         assert_eq!(out.len(), 2);

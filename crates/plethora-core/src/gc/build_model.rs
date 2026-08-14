@@ -100,7 +100,8 @@ impl Genome {
         let path = path.as_ref();
         let index_path = path.with_extension(format!(
             "{}.fai",
-            path.extension().map_or(String::new(), |e| e.to_string_lossy().into_owned())
+            path.extension()
+                .map_or(String::new(), |e| e.to_string_lossy().into_owned())
         ));
         let index = fai::fs::read(&index_path).map_err(|e| {
             io::Error::new(

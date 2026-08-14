@@ -91,7 +91,8 @@ where
                 None => best = Some(i),
                 Some(b) => {
                     let current = heads[b].as_ref().expect("best index holds a line");
-                    if cmp_k1_k2n(candidate.as_bytes(), current.as_bytes()) == std::cmp::Ordering::Less
+                    if cmp_k1_k2n(candidate.as_bytes(), current.as_bytes())
+                        == std::cmp::Ordering::Less
                     {
                         best = Some(i);
                     }
@@ -124,15 +125,16 @@ mod tests {
             &mut out,
         )
         .unwrap();
-        String::from_utf8(out).unwrap().lines().map(String::from).collect()
+        String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(String::from)
+            .collect()
     }
 
     #[test]
     fn sorts_by_chromosome_then_numeric_start() {
-        let out = run(
-            &["chr2\t100\ta", "chr1\t200\tb", "chr1\t30\tc"],
-            100,
-        );
+        let out = run(&["chr2\t100\ta", "chr1\t200\tb", "chr1\t30\tc"], 100);
         assert_eq!(out, ["chr1\t30\tc", "chr1\t200\tb", "chr2\t100\ta"]);
     }
 

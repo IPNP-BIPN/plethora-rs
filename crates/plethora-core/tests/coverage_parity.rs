@@ -17,7 +17,10 @@ struct Lcg(u64);
 
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 11
     }
 
@@ -125,7 +128,10 @@ fn compare(stage: &str, ours: &[String], theirs: &[String]) {
         theirs.len()
     );
     for (i, (a, b)) in ours.iter().zip(theirs).enumerate() {
-        assert_eq!(a, b, "{stage}: line {i} differs\n  ours:   {a}\n  theirs: {b}");
+        assert_eq!(
+            a, b,
+            "{stage}: line {i} differs\n  ours:   {a}\n  theirs: {b}"
+        );
     }
     println!("  {stage}: {} lines identical", ours.len());
 }
@@ -204,7 +210,11 @@ fn the_interval_chain_matches_the_real_tools() {
         std::fs::File::create(&ours_coverage).expect("create"),
     )
     .expect("merge");
-    compare("merge -c 5 -o sum", &read(&ours_coverage), &read(&theirs_coverage));
+    compare(
+        "merge -c 5 -o sum",
+        &read(&ours_coverage),
+        &read(&theirs_coverage),
+    );
 
     // ---- awk read depth ----
     let theirs_depth = d.join("theirs_depth.bed");
@@ -231,8 +241,14 @@ fn the_interval_chain_matches_the_real_tools() {
         "  corpus: {} domains, {zeros} uncovered, {fractional} with a fractional depth",
         depth.len()
     );
-    assert!(zeros > 0, "no uncovered domain, so the null-B path went untested");
-    assert!(fractional > 50, "too few fractional depths to test awk's OFMT");
+    assert!(
+        zeros > 0,
+        "no uncovered domain, so the null-B path went untested"
+    );
+    assert!(
+        fractional > 50,
+        "too few fractional depths to test awk's OFMT"
+    );
 }
 
 /// The stage boundary that matters most: an uncovered domain must survive all
@@ -283,7 +299,10 @@ fn an_uncovered_domain_survives_the_whole_chain() {
     write_read_depth(read(&coverage).into_iter(), &mut depth).expect("depth");
     let depth = String::from_utf8(depth).expect("utf-8");
 
-    assert!(depth.contains("uncovered\t0"), "uncovered domain lost: {depth}");
+    assert!(
+        depth.contains("uncovered\t0"),
+        "uncovered domain lost: {depth}"
+    );
     assert!(depth.contains("covered\t"), "covered domain lost: {depth}");
 }
 
@@ -298,13 +317,12 @@ fn make_bed_leaves_the_upstream_files() {
     let prefix = d.join("sample");
 
     // Stand in for what make_bed would have produced by this point.
-    write(&d.join("sample_coverage.bed"), &["dom\t0\t100\t50".to_string()]);
+    write(
+        &d.join("sample_coverage.bed"),
+        &["dom\t0\t100\t50".to_string()],
+    );
     let mut depth = Vec::new();
-    write_read_depth(
-        read(&d.join("sample_coverage.bed")).into_iter(),
-        &mut depth,
-    )
-    .expect("depth");
+    write_read_depth(read(&d.join("sample_coverage.bed")).into_iter(), &mut depth).expect("depth");
     std::fs::write(format!("{}_read_depth.bed", prefix.display()), depth).expect("write");
 
     assert!(d.join("sample_read_depth.bed").exists());

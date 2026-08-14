@@ -90,7 +90,11 @@ pub fn dnrm2(n: usize, x: &[f64], incx: isize) -> f64 {
         if amed > 0.0 || amed.is_nan() {
             let amed = amed.sqrt();
             let asml = asml.sqrt() / SSML;
-            let (ymin, ymax) = if asml > amed { (amed, asml) } else { (asml, amed) };
+            let (ymin, ymax) = if asml > amed {
+                (amed, asml)
+            } else {
+                (asml, amed)
+            };
             (1.0, ymax * ymax * (1.0 + (ymin / ymax) * (ymin / ymax)))
         } else {
             (1.0 / SSML, asml)
@@ -185,7 +189,11 @@ pub fn drotg(a: f64, b: f64) -> (f64, f64, f64, f64) {
         (b, 1.0, 0.0, 1.0)
     } else {
         let scl = SAFMAX.min(SAFMIN.max(anorm.max(bnorm)));
-        let sigma = if anorm > bnorm { sign(1.0, a) } else { sign(1.0, b) };
+        let sigma = if anorm > bnorm {
+            sign(1.0, a)
+        } else {
+            sign(1.0, b)
+        };
         let r = sigma * (scl * ((a / scl) * (a / scl) + (b / scl) * (b / scl)).sqrt());
         let c = a / r;
         let s = b / r;

@@ -34,7 +34,10 @@ fn read_lines(path: &PathBuf) -> Vec<String> {
     } else {
         Box::new(file)
     };
-    BufReader::new(reader).lines().map_while(Result::ok).collect()
+    BufReader::new(reader)
+        .lines()
+        .map_while(Result::ok)
+        .collect()
 }
 
 fn env_path(key: &str) -> Option<PathBuf> {
@@ -94,7 +97,11 @@ fn reproduces_a_real_gc_correction() {
         expected.len(),
         rows.len()
     );
-    assert_eq!(rows.len(), expected.len(), "row count differs from upstream");
+    assert_eq!(
+        rows.len(),
+        expected.len(),
+        "row count differs from upstream"
+    );
 
     let mut gc_text_mismatches = 0;
     let mut worst_rel = 0.0_f64;
@@ -116,7 +123,9 @@ fn reproduces_a_real_gc_correction() {
             ("k.gc", row.k_gc, &want[2]),
             ("corrected.coverage", row.corrected_coverage, &want[3]),
         ] {
-            let Ok(want_value) = text.parse::<f64>() else { continue };
+            let Ok(want_value) = text.parse::<f64>() else {
+                continue;
+            };
             compared += 1;
             if got == want_value {
                 exact += 1;
@@ -125,7 +134,10 @@ fn reproduces_a_real_gc_correction() {
             let rel = (got - want_value).abs() / want_value.abs().max(1e-300);
             if rel > worst_rel {
                 worst_rel = rel;
-                worst_where = format!("{} {label}: got {got:.17e}, want {want_value:.17e}", row.domain);
+                worst_where = format!(
+                    "{} {label}: got {got:.17e}, want {want_value:.17e}",
+                    row.domain
+                );
             }
         }
     }
@@ -137,7 +149,10 @@ fn reproduces_a_real_gc_correction() {
         rows.len()
     );
 
-    assert_eq!(gc_text_mismatches, 0, "R's rounding of percent.gc was not reproduced");
+    assert_eq!(
+        gc_text_mismatches, 0,
+        "R's rounding of percent.gc was not reproduced"
+    );
     // The residual is the BLAS difference inside the loess, carried through
     // k.gc into the corrected coverage. See plethora_compat::loess::blas.
     assert!(

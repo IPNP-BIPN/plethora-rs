@@ -50,7 +50,10 @@ pub fn sort_by_name<I>(records: I, run_records: usize, tmp_dir: &Path) -> io::Re
 where
     I: IntoIterator<Item = Aln>,
 {
-    assert!(run_records > 0, "a sorting run must hold at least one record");
+    assert!(
+        run_records > 0,
+        "a sorting run must hold at least one record"
+    );
 
     let mut runs: Vec<std::path::PathBuf> = Vec::new();
     let mut buffer: Vec<Aln> = Vec::new();
@@ -100,8 +103,14 @@ fn sort_run(run: &mut [Aln]) {
 /// what keeps the whole sort stable: run `i` holds records that came before run
 /// `j > i` in the input.
 fn merge_runs(paths: &[std::path::PathBuf]) -> io::Result<Vec<Aln>> {
-    let mut readers: Vec<RunReader> = paths.iter().map(RunReader::open).collect::<io::Result<_>>()?;
-    let mut heads: Vec<Option<Aln>> = readers.iter_mut().map(RunReader::next).collect::<io::Result<_>>()?;
+    let mut readers: Vec<RunReader> = paths
+        .iter()
+        .map(RunReader::open)
+        .collect::<io::Result<_>>()?;
+    let mut heads: Vec<Option<Aln>> = readers
+        .iter_mut()
+        .map(RunReader::next)
+        .collect::<io::Result<_>>()?;
 
     let mut out = Vec::new();
     loop {
@@ -114,8 +123,12 @@ fn merge_runs(paths: &[std::path::PathBuf]) -> io::Result<Vec<Aln>> {
                     let current = heads[b].as_ref().expect("best index holds a record");
                     // Strictly less, so an equal key leaves the earlier run in
                     // front and the merge stays stable.
-                    if cmp_by_qname(&candidate.name, candidate.flags, &current.name, current.flags)
-                        == Ordering::Less
+                    if cmp_by_qname(
+                        &candidate.name,
+                        candidate.flags,
+                        &current.name,
+                        current.flags,
+                    ) == Ordering::Less
                     {
                         best = Some(i);
                     }
@@ -144,7 +157,10 @@ fn write_run(run: &[Aln], path: &Path) -> io::Result<()> {
         match &a.chrom {
             Some(c) => {
                 let len = u16::try_from(c.len()).map_err(|_| {
-                    io::Error::new(io::ErrorKind::InvalidData, "reference name longer than 65535")
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "reference name longer than 65535",
+                    )
                 })?;
                 w.write_all(&len.to_le_bytes())?;
                 w.write_all(c.as_bytes())?;
@@ -193,7 +209,10 @@ impl RunReader {
         } else {
             let mut buf = vec![0_u8; usize::from(chrom_len)];
             self.inner.read_exact(&mut buf)?;
-            Some(String::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?)
+            Some(
+                String::from_utf8(buf)
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+            )
         };
 
         let mut start = [0_u8; 8];
@@ -298,7 +317,9 @@ mod tests {
     #[test]
     fn stability_survives_spilling() {
         let dir = tempfile::tempdir().unwrap();
-        let input: Vec<Aln> = (0..20).map(|i| aln("same", PAIRED | FIRST_MATE, i)).collect();
+        let input: Vec<Aln> = (0..20)
+            .map(|i| aln("same", PAIRED | FIRST_MATE, i))
+            .collect();
         let spilled = sort_by_name(input, 3, dir.path()).unwrap();
         assert_eq!(
             spilled.iter().map(|a| a.start).collect::<Vec<_>>(),

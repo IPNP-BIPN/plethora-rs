@@ -22,7 +22,10 @@ struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {
         // Numerical Recipes' constants for a 64-bit LCG.
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 11
     }
 
@@ -49,9 +52,20 @@ fn tool_exists(tool: &str) -> bool {
 fn bed_corpus() -> Vec<String> {
     let mut rng = Lcg(0x5eed_1234);
     let chroms = [
-        "chr1", "chr2", "chr10", "chr20", "chrX", "chrY", "chrM", "chr1_KI270706v1_random", "A", "a",
+        "chr1",
+        "chr2",
+        "chr10",
+        "chr20",
+        "chrX",
+        "chrY",
+        "chrM",
+        "chr1_KI270706v1_random",
+        "A",
+        "a",
     ];
-    let names = ["read", "read1", "read10", "read2", "a.b", "a-b", "a_b", ".", "zzz"];
+    let names = [
+        "read", "read1", "read10", "read2", "a.b", "a-b", "a_b", ".", "zzz",
+    ];
 
     (0..4000)
         .map(|_| {
@@ -119,7 +133,14 @@ fn gnusort_matches_gnu_sort() {
 fn qname_corpus() -> Vec<(String, u16)> {
     let mut rng = Lcg(0xc0ffee);
     let stems = ["read", "a", "A", "x", "sim", "HWI-ST745", "", "z9"];
-    let flags = [0x40_u16, 0x80, 0x40 | 0x100, 0x40 | 0x800, 0x80 | 0x100, 0x80 | 0x800];
+    let flags = [
+        0x40_u16,
+        0x80,
+        0x40 | 0x100,
+        0x40 | 0x800,
+        0x80 | 0x100,
+        0x80 | 0x800,
+    ];
 
     let mut names = vec![
         "9999999999999999999".to_string(),
@@ -192,7 +213,12 @@ fn strnum_matches_samtools_sort_n() {
         .lines()
         .filter(|l| !l.starts_with('@'))
         .map(|l| {
-            let pos: usize = l.split('\t').nth(3).expect("POS column").parse().expect("POS is numeric");
+            let pos: usize = l
+                .split('\t')
+                .nth(3)
+                .expect("POS column")
+                .parse()
+                .expect("POS is numeric");
             pos - 1
         })
         .collect();

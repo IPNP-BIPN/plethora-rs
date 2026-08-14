@@ -66,7 +66,11 @@ pub struct OutOfOrder {
 /// # Errors
 /// Returns an error if a key reappears after another key intervened, or if
 /// writing fails.
-pub fn merge_sum<I, W>(rows: I, value_column: usize, mut out: W) -> Result<(), Box<dyn std::error::Error>>
+pub fn merge_sum<I, W>(
+    rows: I,
+    value_column: usize,
+    mut out: W,
+) -> Result<(), Box<dyn std::error::Error>>
 where
     I: Iterator<Item = String>,
     W: Write,
@@ -89,13 +93,21 @@ where
                     open.end = open.end.max(row.end);
                     open.value += row.value;
                 } else {
-                    writeln!(out, "{}\t{}\t{}\t{}", open.key, open.start, open.end, open.value)?;
+                    writeln!(
+                        out,
+                        "{}\t{}\t{}\t{}",
+                        open.key, open.start, open.end, open.value
+                    )?;
                     *open = row;
                 }
             }
             _ => {
                 if let Some(open) = current.take() {
-                    writeln!(out, "{}\t{}\t{}\t{}", open.key, open.start, open.end, open.value)?;
+                    writeln!(
+                        out,
+                        "{}\t{}\t{}\t{}",
+                        open.key, open.start, open.end, open.value
+                    )?;
                 }
                 if seen.contains(&row.key) {
                     return Err(Box::new(OutOfOrder { record: line }));
@@ -107,7 +119,11 @@ where
     }
 
     if let Some(open) = current {
-        writeln!(out, "{}\t{}\t{}\t{}", open.key, open.start, open.end, open.value)?;
+        writeln!(
+            out,
+            "{}\t{}\t{}\t{}",
+            open.key, open.start, open.end, open.value
+        )?;
     }
 
     out.flush()?;
@@ -120,9 +136,12 @@ mod tests {
 
     fn run(rows: &[&str]) -> Result<Vec<String>, String> {
         let mut out = Vec::new();
-        merge_sum(rows.iter().map(|s| (*s).to_string()), 5, &mut out)
-            .map_err(|e| e.to_string())?;
-        Ok(String::from_utf8(out).unwrap().lines().map(String::from).collect())
+        merge_sum(rows.iter().map(|s| (*s).to_string()), 5, &mut out).map_err(|e| e.to_string())?;
+        Ok(String::from_utf8(out)
+            .unwrap()
+            .lines()
+            .map(String::from)
+            .collect())
     }
 
     /// The shape this stage actually meets: identical intervals, one per read

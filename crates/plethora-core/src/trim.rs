@@ -95,9 +95,12 @@ pub fn resolve_adapters(
         Adapters::None => Ok((Vec::new(), None)),
         Adapters::Sequence(seq) => Ok((vec![("user".to_string(), seq.clone())], None)),
         Adapters::Preset(name) => {
-            let preset = preset_by_name(name)
-                .with_context(|| format!("unknown adapter preset: {name}"))?;
-            Ok((vec![(preset.name.to_string(), preset.seq.as_bytes().to_vec())], None))
+            let preset =
+                preset_by_name(name).with_context(|| format!("unknown adapter preset: {name}"))?;
+            Ok((
+                vec![(preset.name.to_string(), preset.seq.as_bytes().to_vec())],
+                None,
+            ))
         }
         Adapters::Detect => {
             let result = adapter::autodetect_adapter(r1, None)
@@ -195,10 +198,12 @@ pub fn trim_pair(r1: &Path, r2: &Path, choice: &Adapters) -> Result<TrimSummary>
     // Compression follows the output name, as upstream's does: the batch
     // scripts write .fastq.gz and glob for it.
     let gzip = out_r1.extension().is_some_and(|e| e == "gz");
-    let mut writer_r1 = trim_galore::fastq::FastqWriter::create(&out_r1, gzip, 1, config.gzip_level)
-        .with_context(|| format!("creating {}", out_r1.display()))?;
-    let mut writer_r2 = trim_galore::fastq::FastqWriter::create(&out_r2, gzip, 1, config.gzip_level)
-        .with_context(|| format!("creating {}", out_r2.display()))?;
+    let mut writer_r1 =
+        trim_galore::fastq::FastqWriter::create(&out_r1, gzip, 1, config.gzip_level)
+            .with_context(|| format!("creating {}", out_r1.display()))?;
+    let mut writer_r2 =
+        trim_galore::fastq::FastqWriter::create(&out_r2, gzip, 1, config.gzip_level)
+            .with_context(|| format!("creating {}", out_r2.display()))?;
 
     let (stats_r1, _stats_r2, _pairs) = trimmer::run_paired_end(
         &mut reader_r1,
@@ -292,7 +297,10 @@ mod tests {
     fn the_upstream_choice_trims_no_adapter() {
         let (adapters, detection) =
             resolve_adapters(&Adapters::None, Path::new("/nonexistent")).unwrap();
-        assert!(adapters.is_empty(), "XXX matches nothing, so nothing is configured");
+        assert!(
+            adapters.is_empty(),
+            "XXX matches nothing, so nothing is configured"
+        );
         assert!(detection.is_none());
     }
 
@@ -306,9 +314,11 @@ mod tests {
 
     #[test]
     fn an_explicit_sequence_is_used_as_given() {
-        let (adapters, _) =
-            resolve_adapters(&Adapters::Sequence(b"ACGTACGT".to_vec()), Path::new("/nonexistent"))
-                .unwrap();
+        let (adapters, _) = resolve_adapters(
+            &Adapters::Sequence(b"ACGTACGT".to_vec()),
+            Path::new("/nonexistent"),
+        )
+        .unwrap();
         assert_eq!(adapters.len(), 1);
         assert_eq!(adapters[0].1, b"ACGTACGT");
     }

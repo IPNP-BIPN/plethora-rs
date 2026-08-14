@@ -24,7 +24,10 @@ struct Lcg(u64);
 
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 11
     }
 
@@ -152,7 +155,8 @@ fn merge_pairs_matches_the_perl() {
         .expect("run merge_pairs.pl");
     assert!(status.success(), "merge_pairs.pl failed");
 
-    let expected = std::fs::read_to_string(dir.path().join("sample_edited.bed")).expect("read perl output");
+    let expected =
+        std::fs::read_to_string(dir.path().join("sample_edited.bed")).expect("read perl output");
 
     let lines = || text.lines().map(String::from);
     let stats = measure(lines());
@@ -177,7 +181,10 @@ fn merge_pairs_matches_the_perl() {
         stats.mean,
         stats.sd
     );
-    assert!(broken > 500, "the corpus must exercise the random draw, saw {broken}");
+    assert!(
+        broken > 500,
+        "the corpus must exercise the random draw, saw {broken}"
+    );
 
     let e: Vec<&str> = expected.lines().collect();
     let g: Vec<&str> = got.lines().collect();
@@ -192,7 +199,12 @@ fn merge_pairs_matches_the_perl() {
             differing += 1;
         }
     }
-    assert_eq!(differing, 0, "{differing} of {} lines differ from the Perl", e.len());
+    assert_eq!(
+        differing,
+        0,
+        "{differing} of {} lines differ from the Perl",
+        e.len()
+    );
 }
 
 /// The measured distribution must match too, not just the output lines: it is
@@ -258,7 +270,10 @@ fn the_vendored_oracle_is_upstreams_script() {
         return;
     }
     let text = std::fs::read_to_string(&path).expect("read oracle");
-    assert!(text.contains("Math::Random"), "the oracle must use Math::Random");
+    assert!(
+        text.contains("Math::Random"),
+        "the oracle must use Math::Random"
+    );
     assert!(
         text.contains("random_set_seed_from_phrase($eed)"),
         "the oracle must seed from the line's MD5"
@@ -270,6 +285,9 @@ fn the_vendored_oracle_is_upstreams_script() {
     let mut hasher = std::process::Command::new("shasum");
     hasher.args(["-a", "256"]).arg(&path);
     if let Ok(out) = hasher.output() {
-        eprintln!("oracle sha256: {}", String::from_utf8_lossy(&out.stdout).trim());
+        eprintln!(
+            "oracle sha256: {}",
+            String::from_utf8_lossy(&out.stdout).trim()
+        );
     }
 }

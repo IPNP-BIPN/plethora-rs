@@ -139,10 +139,18 @@ fn every_point_lands_in_a_bracketing_leaf() {
         let tree = build(&case);
         for &z in &case.x {
             let cell = tree.locate(z);
-            assert_eq!(tree.a[cell], 0, "{}: locate returned an internal cell", case.name);
+            assert_eq!(
+                tree.a[cell], 0,
+                "{}: locate returned an internal cell",
+                case.name
+            );
             let lo = tree.v[tree.c[cell][1]];
             let hi = tree.v[tree.c[cell][tree.vc]];
-            assert!(lo <= z && z <= hi, "{}: {z} outside [{lo}, {hi}]", case.name);
+            assert!(
+                lo <= z && z <= hi,
+                "{}: {z} outside [{lo}, {hi}]",
+                case.name
+            );
         }
     }
 }
@@ -274,7 +282,9 @@ fn fitted_values_match_r() {
         println!("  {:<16} worst relative error {case_worst:.3e}", case.name);
     }
 
-    println!("fitted values: {exact}/{total} bit-exact, worst relative {worst_rel:.3e} ({worst_where})");
+    println!(
+        "fitted values: {exact}/{total} bit-exact, worst relative {worst_rel:.3e} ({worst_where})"
+    );
     assert!(
         worst_rel < 1e-9,
         "fitted values drifted {worst_rel:.3e} relative from R, far beyond a \
