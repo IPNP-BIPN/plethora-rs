@@ -1,0 +1,14 @@
+[package]
+name = "plethora-compat"
+description = "Bit-exact ports of the Perl, R, GNU coreutils and samtools behaviour that plethora's numbers depend on"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true
