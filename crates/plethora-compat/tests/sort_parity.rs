@@ -198,13 +198,28 @@ fn strnum_matches_samtools_sort_n() {
 
     // The tie-break on records sharing a QNAME changed in samtools 1.20, so
     // ask the installed one which rule it follows rather than assuming.
+    //
+    // Both streams are read and the first line naming samtools is taken:
+    // where the version line lands has varied across releases, and reading
+    // only stdout silently yields an empty string and the wrong default.
     let version = Command::new("samtools")
         .arg("--version")
         .output()
         .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .and_then(|s| s.lines().next().map(String::from))
+        .and_then(|o| {
+            let mut text = String::from_utf8_lossy(&o.stdout).into_owned();
+            text.push('\n');
+            text.push_str(&String::from_utf8_lossy(&o.stderr));
+            text.lines()
+                .find(|l| l.starts_with("samtools"))
+                .map(String::from)
+        })
         .unwrap_or_default();
+    assert!(
+        !version.is_empty(),
+        "could not read a version from `samtools --version`, so the tie-break \
+         rule cannot be chosen; refusing to compare against an assumed one"
+    );
     let rule = TieBreak::from_version(&version);
     eprintln!("comparing against {version}, tie-break rule {rule:?}");
 
