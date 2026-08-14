@@ -374,6 +374,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "noodles-fasta"
+version = "0.66.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da0263cded3c76c5ddc6d36b805e68e512e6f474a56b9855c7ef37cb69a3fb65"
+dependencies = [
+ "bstr",
+ "memchr",
+ "noodles-bgzf",
+ "noodles-core",
+]
+
+[[package]]
 name = "noodles-sam"
 version = "0.89.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -408,6 +420,8 @@ dependencies = [
  "md-5",
  "noodles-bam",
  "noodles-bgzf",
+ "noodles-core",
+ "noodles-fasta",
  "noodles-sam",
  "plethora-compat",
  "tempfile",

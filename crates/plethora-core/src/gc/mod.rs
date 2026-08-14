@@ -8,5 +8,6 @@
 //! number. They define the correction curve and set the haploid unit, so the
 //! reported copy numbers are relative to them.
 
+pub mod build_model;
 pub mod correction;
 pub mod from_fasta;

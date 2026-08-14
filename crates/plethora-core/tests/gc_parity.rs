@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use plethora_core::gc::build_model::{Genome, Naming, build, write_fasta};
 use plethora_core::gc::correction::{Row, correct};
 use plethora_core::gc::from_fasta::gc_from_fasta;
 
@@ -326,5 +327,129 @@ fn the_vendored_oracles_are_upstreams_scripts() {
             text.contains(r#"grepl("((baseline)|(uc))", domain)"#),
             "the oracle must use the unanchored pattern for the haploid unit"
         );
+    }
+}
+
+/// The extraction step, against the real `bedtools getfasta`.
+///
+/// Checks both naming conventions and, more importantly, that the sequences
+/// themselves match: a coordinate convention error here would shift every
+/// domain's GC by a base or two and be invisible downstream.
+#[test]
+fn build_model_matches_bedtools_getfasta() {
+    if !have("bedtools", &["--version"]) || !have("samtools", &["--version"]) {
+        eprintln!("skipping: bedtools or samtools not installed");
+        return;
+    }
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let d = dir.path();
+
+    // A genome with soft-masked and ambiguous stretches, so the GC reading is
+    // exercised rather than a run of plain ACGT.
+    let mut rng = Lcg(0x_9c_c0_33_00);
+    let alphabet = b"ACGTacgtNnRY";
+    let mut fasta = String::new();
+    for chrom in ["chr1", "chr2"] {
+        fasta.push_str(&format!(">{chrom}\n"));
+        for line in 0..40 {
+            let _ = line;
+            let seq: String = (0..60)
+                .map(|_| char::from(alphabet[rng.below(alphabet.len() as u64) as usize]))
+                .collect();
+            fasta.push_str(&seq);
+            fasta.push('\n');
+        }
+    }
+    let genome_path = d.join("g.fa");
+    std::fs::write(&genome_path, &fasta).expect("write genome");
+
+    let index = Command::new("samtools")
+        .arg("faidx")
+        .arg(&genome_path)
+        .status()
+        .expect("run samtools faidx");
+    assert!(index.success(), "samtools faidx failed");
+
+    // Domains of varying length, some spanning FASTA line breaks.
+    let mut bed = String::new();
+    for i in 0..60 {
+        let chrom = if i % 2 == 0 { "chr1" } else { "chr2" };
+        let start = rng.below(2000);
+        let end = start + 50 + rng.below(300);
+        bed.push_str(&format!("{chrom}\t{start}\t{end}\tdom{i:03}\t255\t+\n"));
+    }
+    let bed_path = d.join("domains.bed");
+    std::fs::write(&bed_path, &bed).expect("write bed");
+
+    // What bedtools extracts.
+    let theirs_fa = d.join("theirs.fa");
+    let out = Command::new("bedtools")
+        .args(["getfasta", "-nameOnly", "-fi"])
+        .arg(&genome_path)
+        .arg("-bed")
+        .arg(&bed_path)
+        .arg("-fo")
+        .arg(&theirs_fa)
+        .output()
+        .expect("run bedtools getfasta");
+    assert!(
+        out.status.success(),
+        "bedtools getfasta failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // What we extract.
+    let mut genome = Genome::open(&genome_path).expect("open genome");
+    let ours_fa = d.join("ours.fa");
+    write_fasta(
+        std::io::BufReader::new(std::fs::File::open(&bed_path).unwrap()),
+        &mut genome,
+        Naming::Bare,
+        std::fs::File::create(&ours_fa).expect("create"),
+    )
+    .expect("write fasta");
+
+    let theirs = std::fs::read_to_string(&theirs_fa).expect("read theirs");
+    let ours = std::fs::read_to_string(&ours_fa).expect("read ours");
+    assert_eq!(
+        ours.lines().collect::<Vec<_>>(),
+        theirs.lines().collect::<Vec<_>>(),
+        "extracted sequences differ from bedtools"
+    );
+
+    // And the GC figures the Perl would compute from bedtools' own output.
+    let script = oracle_dir().join("gc_from_fasta.pl");
+    if script.exists() && have("perl", &["-e", "1"]) {
+        let perl = Command::new("perl")
+            .arg(&script)
+            .arg(&theirs_fa)
+            .output()
+            .expect("run gc_from_fasta.pl");
+        assert!(perl.status.success(), "gc_from_fasta.pl failed");
+        let expected: HashMap<String, String> = String::from_utf8_lossy(&perl.stdout)
+            .lines()
+            .filter_map(|l| l.split_once('\t'))
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+
+        let mut genome = Genome::open(&genome_path).expect("reopen genome");
+        let rows = build(
+            std::io::BufReader::new(std::fs::File::open(&bed_path).unwrap()),
+            &mut genome,
+        )
+        .expect("build");
+
+        assert_eq!(rows.len(), expected.len(), "domain count differs");
+        for row in &rows {
+            let (_, value) = row.to_line().split_once('\t').map(|(a, b)| (a.to_string(), b.to_string())).unwrap();
+            assert_eq!(
+                &value,
+                expected.get(&row.name).expect("domain present"),
+                "{}: GC differs",
+                row.name
+            );
+        }
+        println!("build_model: {} domains match bedtools getfasta and gc_from_fasta.pl", rows.len());
     }
 }

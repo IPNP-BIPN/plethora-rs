@@ -16,6 +16,8 @@ thiserror = { workspace = true }
 
 noodles-bam = "0.94"
 noodles-bgzf = "0.51"
+noodles-core = "0.20"
+noodles-fasta = "0.66"
 noodles-sam = "0.89"
 md-5 = "0.10"
 
