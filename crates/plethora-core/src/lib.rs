@@ -6,7 +6,9 @@
 //! this crate holds the pipeline logic that calls it.
 
 pub mod bam;
+pub mod batch;
 pub mod bed;
+pub mod config;
 pub mod coverage;
 pub mod gc;
 pub mod io;
