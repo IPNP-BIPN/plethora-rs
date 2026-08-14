@@ -22,6 +22,10 @@
 //! `normalize = TRUE` is also a default, but R only applies it for more than one
 //! predictor, so it is inert here.
 
+pub mod blas;
+pub mod eval;
+pub mod fit;
+pub mod linpack;
 pub mod tree;
 
 /// The parameters R derives from `loess.control` before any fitting happens.

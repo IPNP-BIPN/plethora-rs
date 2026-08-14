@@ -146,3 +146,138 @@ fn every_point_lands_in_a_bracketing_leaf() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// The fitting stages, once the geometry is known to be right.
+// ---------------------------------------------------------------------------
+
+/// Relative difference against a scale, since several vertex values and
+/// fitted values sit near zero after cancellation. Counting ULP there is
+/// misleading: a relative gap of 1e-13 spans thousands of representable steps.
+fn relative_error(got: f64, want: f64, scale: f64) -> f64 {
+    if got == want {
+        return 0.0;
+    }
+    (got - want).abs() / scale.max(1e-300)
+}
+
+/// A case together with R's `vval`, response and fitted values.
+type FullCase = (Case, Vec<f64>, Vec<f64>, Vec<f64>);
+
+fn full_case(line: &'static str) -> FullCase {
+    let f: Vec<&str> = line.split('\t').collect();
+    let case = Case {
+        name: f[0],
+        nc: f[2].parse().expect("nc"),
+        nv: f[3].parse().expect("nv"),
+        vert: doubles(f[4]),
+        a: f[5].split(',').map(|v| v.parse().expect("a")).collect(),
+        xi: doubles(f[6]),
+        x: doubles(f[8]),
+    };
+    (case, doubles(f[7]), doubles(f[9]), doubles(f[10]))
+}
+
+fn full_cases() -> Vec<FullCase> {
+    VECTORS
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .map(full_case)
+        .collect()
+}
+
+/// `fit$kd$vval` interleaves value and derivative per vertex.
+///
+/// Checked before the interpolation, so that a failure here localises to the
+/// regression rather than to the Hermite basis.
+#[test]
+fn vertex_fits_match_r() {
+    let mut worst = 0.0_f64;
+    let mut worst_where = String::new();
+
+    for (case, vval, y, _fitted) in full_cases() {
+        let fit = plethora_compat::loess::eval::Loess::fit(&case.x, &y);
+        assert_eq!(fit.vval.len(), case.nv, "{}: vertex count", case.name);
+
+        // Scale values against the spread of the response, derivatives against
+        // the spread of the derivatives; the two have different units.
+        let y_scale = y.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+            - y.iter().copied().fold(f64::INFINITY, f64::min);
+        let d_scale = (0..case.nv)
+            .map(|l| vval[2 * l + 1].abs())
+            .fold(0.0_f64, f64::max);
+
+        for l in 1..=case.nv {
+            for (offset, got, scale) in [
+                (0, fit.vval[l - 1].value, y_scale),
+                (1, fit.vval[l - 1].derivative, d_scale),
+            ] {
+                let want = vval[2 * (l - 1) + offset];
+                let rel = relative_error(got, want, scale);
+                if rel > worst {
+                    worst = rel;
+                    worst_where = format!(
+                        "{} vertex {l} {}: got {got:.17e}, want {want:.17e}",
+                        case.name,
+                        if offset == 0 { "value" } else { "derivative" }
+                    );
+                }
+            }
+        }
+    }
+
+    println!("worst vertex-fit relative error: {worst:.3e} ({worst_where})");
+    assert!(
+        worst < 1e-9,
+        "vertex fits drifted {worst:.3e} relative from R, far beyond a BLAS \
+         summation-order difference: {worst_where}"
+    );
+}
+
+/// The end of the chain: what `gc_correction.R` divides by.
+///
+/// Reported as a relative error against the spread of the fitted values, which
+/// is the meaningful scale. Counting ULP is misleading here: several fitted
+/// values sit near zero after cancellation, where a relative difference of
+/// 1e-13 spans thousands of representable steps.
+#[test]
+fn fitted_values_match_r() {
+    let mut worst_rel = 0.0_f64;
+    let mut worst_where = String::new();
+    let mut exact = 0_usize;
+    let mut total = 0_usize;
+
+    for (case, _vval, y, fitted) in full_cases() {
+        let fit = plethora_compat::loess::eval::Loess::fit(&case.x, &y);
+        let got = fit.fitted(&case.x);
+        assert_eq!(got.len(), fitted.len(), "{}: length", case.name);
+
+        let lo = fitted.iter().copied().fold(f64::INFINITY, f64::min);
+        let hi = fitted.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let scale = (hi - lo).max(hi.abs()).max(1e-300);
+
+        let mut case_worst = 0.0_f64;
+        for (i, (&g, &w)) in got.iter().zip(&fitted).enumerate() {
+            total += 1;
+            if g == w {
+                exact += 1;
+            }
+            let rel = (g - w).abs() / scale;
+            if rel > case_worst {
+                case_worst = rel;
+            }
+            if rel > worst_rel {
+                worst_rel = rel;
+                worst_where = format!("{} point {i}: got {g:.17e}, want {w:.17e}", case.name);
+            }
+        }
+        println!("  {:<16} worst relative error {case_worst:.3e}", case.name);
+    }
+
+    println!("fitted values: {exact}/{total} bit-exact, worst relative {worst_rel:.3e} ({worst_where})");
+    assert!(
+        worst_rel < 1e-9,
+        "fitted values drifted {worst_rel:.3e} relative from R, far beyond a \
+         BLAS summation-order difference: {worst_where}"
+    );
+}
