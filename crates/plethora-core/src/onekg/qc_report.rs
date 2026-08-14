@@ -53,6 +53,40 @@ impl TrimStat {
     }
 }
 
+/// Appends the two lines one trimmed pair contributes to `logs/trim_stats.txt`.
+///
+/// Upstream never writes this file. `trim_qc_report.R` opens it first thing,
+/// and nothing in the repository produces it: `2_trim.sh` calls cutadapt with
+/// its output going to the job's log, and no step turns those logs into the
+/// three-column table the R reads. So the QC report cannot run on a fresh
+/// checkout. Writing it here, where the counts already exist, is what makes
+/// `plethora qc-report` work without a manual step.
+///
+/// The paths are logged as `fastq/<sample>/<file>`, since that prefix is how
+/// the sample is recovered from the line.
+///
+/// # Errors
+/// Returns an error if the log cannot be opened or appended to.
+pub fn append_trim_stats(
+    log: &std::path::Path,
+    files: &[(String, u64, u64)],
+) -> std::io::Result<()> {
+    use std::io::Write as _;
+
+    if let Some(parent) = log.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut out = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)?;
+    for (file, total, discarded) in files {
+        writeln!(out, "{file}\ttotal\t{total}")?;
+        writeln!(out, "{file}\tdiscarded\t{discarded}")?;
+    }
+    Ok(())
+}
+
 /// Keeps the last entry for each file and kind.
 ///
 /// Upstream explains why: "duplicate entries are possible if the trim script
@@ -332,6 +366,44 @@ pub fn read_trim_stats<R: BufRead>(input: R) -> std::io::Result<Vec<TrimStat>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What `trim` writes is what the report reads, which is the whole point:
+    /// upstream's QC script opens a file nothing in its repository produces.
+    #[test]
+    fn the_trim_log_round_trips() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let log = dir.path().join("logs/trim_stats.txt");
+
+        append_trim_stats(
+            &log,
+            &[
+                ("fastq/HG00250/HG00250_1.fastq.gz".to_string(), 4000, 120),
+                ("fastq/HG00250/HG00250_2.fastq.gz".to_string(), 4000, 120),
+            ],
+        )
+        .expect("first append");
+        // A rerun appends rather than replaces, as upstream's duplicates imply.
+        append_trim_stats(
+            &log,
+            &[("fastq/HG00251/HG00251_1.fastq.gz".to_string(), 900, 9)],
+        )
+        .expect("second append");
+
+        let text = std::fs::read_to_string(&log).expect("read back");
+        let stats = read_trim_stats(text.as_bytes()).expect("parse");
+        let summaries = summarise(&stats);
+        assert_eq!(summaries.len(), 2);
+
+        let first = &summaries[0];
+        assert_eq!(first.sample, "HG00250");
+        assert_eq!(first.total_reads, 8000, "both mates counted");
+        assert_eq!(first.filtered_reads, 240);
+        assert_eq!(first.files, 2);
+        assert_eq!(first.remaining_reads(), 7760);
+
+        assert_eq!(summaries[1].sample, "HG00251");
+        assert_eq!(summaries[1].files, 1);
+    }
 
     /// `grep` leaves its own prefix on the line, and the fields are still
     /// found by position because the prefix is not tab-separated from them.

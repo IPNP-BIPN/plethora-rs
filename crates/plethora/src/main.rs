@@ -48,6 +48,12 @@ enum Command {
         /// How adapters are chosen: detect, none, or a preset name.
         #[arg(long, default_value = "detect")]
         adapters: String,
+        /// Append the read counts here, for `qc-report` to read later.
+        #[arg(long, default_value = "logs/trim_stats.txt")]
+        log: PathBuf,
+        /// Do not write the trimming log.
+        #[arg(long)]
+        no_log: bool,
     },
 
     /// Coverage per domain, from an alignment. `make_bed.sh`.
@@ -216,7 +222,14 @@ fn main() -> Result<()> {
             read1,
             read2,
             adapters,
-        } => run_trim(&read1, &read2, &adapters),
+            log,
+            no_log,
+        } => run_trim(
+            &read1,
+            &read2,
+            &adapters,
+            (!no_log).then_some(log).as_deref(),
+        ),
         Command::Coverage {
             reference,
             pairing,
@@ -277,7 +290,7 @@ fn main() -> Result<()> {
     }
 }
 
-fn run_trim(read1: &Path, read2: &Path, adapters: &str) -> Result<()> {
+fn run_trim(read1: &Path, read2: &Path, adapters: &str, log: Option<&Path>) -> Result<()> {
     let choice = match adapters {
         "detect" => trim::Adapters::Detect,
         "none" => trim::Adapters::None,
@@ -298,7 +311,34 @@ fn run_trim(read1: &Path, read2: &Path, adapters: &str) -> Result<()> {
     );
     println!("{}", summary.output_r1.display());
     println!("{}", summary.output_r2.display());
+
+    // `qc-report` reads this. Upstream never writes it, so its own QC script
+    // opens a file nothing produces; here the counts are already in hand.
+    if let Some(log) = log {
+        let discarded = (summary.pairs_in - summary.pairs_out) as u64;
+        let entries: Vec<(String, u64, u64)> = [read1, read2]
+            .iter()
+            .map(|p| (logged_path(p), summary.pairs_in as u64, discarded))
+            .collect();
+        onekg::qc_report::append_trim_stats(log, &entries)
+            .with_context(|| format!("appending to {}", log.display()))?;
+    }
     Ok(())
+}
+
+/// The path as the trimming log records it, `fastq/<sample>/<file>`.
+///
+/// The sample is read back out of that prefix, so a path given from somewhere
+/// else keeps only its last two components.
+fn logged_path(path: &Path) -> String {
+    let mut parts: Vec<String> = path
+        .components()
+        .rev()
+        .take(2)
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    parts.reverse();
+    format!("fastq/{}", parts.join("/"))
 }
 
 fn run_coverage(
@@ -737,7 +777,19 @@ fn step_for_sample(config: &Config, sample: &str, step: Step) -> Result<()> {
             let dir = config.fastq_dir(sample);
             let (read1, read2) = mate_pair(&dir)
                 .with_context(|| format!("looking for reads in {}", dir.display()))?;
-            trim::trim_pair(&read1, &read2, &trim::Adapters::Detect)?;
+            let summary = trim::trim_pair(&read1, &read2, &trim::Adapters::Detect)?;
+            // The counts go to the log `qc-report` reads. Every sample appends
+            // to the same file, which is why the reader keeps the last entry
+            // per file and kind rather than the first.
+            let discarded = (summary.pairs_in - summary.pairs_out) as u64;
+            let entries: Vec<(String, u64, u64)> = [&read1, &read2]
+                .iter()
+                .map(|p| (logged_path(p), summary.pairs_in as u64, discarded))
+                .collect();
+            onekg::qc_report::append_trim_stats(
+                &config.paths.logs.join("trim_stats.txt"),
+                &entries,
+            )?;
             Ok(())
         }
 

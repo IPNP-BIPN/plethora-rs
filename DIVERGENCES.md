@@ -193,7 +193,7 @@ end. The intersect stage drops the overhang, so upstream never noticed. Kept.
 
 ## Upstream breakages found, and reported
 
-Four verified problems in upstream, each with a pull request. None of them
+Five verified problems in upstream, four with a pull request. None of them
 affects the core path a typical run takes, which is why the pipeline has worked
 for years: the GC table ships prebuilt, so `build_gc_model.sh` is never run, and
 the 1000 Genomes scripts are separate from single-sample processing.
@@ -204,6 +204,14 @@ the 1000 Genomes scripts are separate from single-sample processing.
 | `getfasta -name` appends `::chrom:start-end` from bedtools 2.27, so the GC join silently matches nothing | [#14](https://github.com/dpastling/plethora/pull/14) |
 | `preprocessing_1000genomes.R` does not parse: a misplaced parenthesis in `write.table` | [#15](https://github.com/dpastling/plethora/pull/15) |
 | The README names three scripts that do not exist | [#16](https://github.com/dpastling/plethora/pull/16) |
+| `trim_qc_report.R` reads `logs/trim_stats.txt`, which nothing in the repository writes | see below |
+
+`logs/trim_stats.txt` is the first file `trim_qc_report.R` opens, and no script
+produces it. `2_trim.sh` sends cutadapt's output to the job log and nothing
+turns those logs into the three-column table the R reads, so the QC report
+cannot run on a fresh checkout. Here `plethora trim` writes the file itself,
+where the counts already exist, and `plethora qc-report` reads it. Pass
+`--no-log` to suppress it.
 
 `as.tbl()` was deprecated in dplyr 1.0.0 (May 2020) but only made **defunct** in
 1.2.0. For five years it merely warned, so anyone who ran the pipeline before
