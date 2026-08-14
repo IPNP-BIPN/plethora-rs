@@ -6,3 +6,4 @@
 //! this crate holds the pipeline logic that calls it.
 
 pub mod bam;
+pub mod merge_pairs;
