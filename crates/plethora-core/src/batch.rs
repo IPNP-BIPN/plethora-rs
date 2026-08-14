@@ -176,6 +176,15 @@ pub enum Scheduler {
     Slurm,
 }
 
+impl std::fmt::Display for Scheduler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Lsf => "lsf",
+            Self::Slurm => "slurm",
+        })
+    }
+}
+
 impl std::str::FromStr for Scheduler {
     type Err = String;
 

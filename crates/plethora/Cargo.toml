@@ -1,0 +1,23 @@
+[package]
+name = "plethora"
+description = "Olduvai/DUF1220 copy-number pipeline: a native Rust reimplementation of plethora"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "plethora"
+path = "src/main.rs"
+
+[dependencies]
+plethora-compat = { workspace = true }
+plethora-core = { workspace = true }
+
+anyhow = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+
+[lints]
+workspace = true
