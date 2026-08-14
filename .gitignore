@@ -4,5 +4,6 @@
 /logs
 /fastq/*_filtered.fastq.gz
 
-# Reference oracles used only by the parity tests. Rebuilt by `cargo xtask oracle`.
+# Reference oracles used only by the parity tests, installed by hand:
+#   env -u PERL5LIB cpanm --notest -l .oracle/perl5 Math::Random
 /.oracle

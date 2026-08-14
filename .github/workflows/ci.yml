@@ -33,6 +33,12 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      # The vendored reference data is compressed, so a corrupted or
+      # accidentally re-encoded copy would not look wrong in a diff. This
+      # decompresses every file and checks it against upstream's plaintext.
+      - name: Check the vendored reference data
+        run: cargo xtask check-data
+
   # The tests that matter: each stage against the tool it replaces. A green here
   # means the port reproduces samtools, bedtools, GNU sort, awk, Perl and R on
   # this runner's versions.
@@ -80,6 +86,12 @@ jobs:
 
       - name: Test
         run: cargo test --workspace -- --nocapture
+
+      # Both pipelines on the same input, upstream's scripts driving the real
+      # samtools, bedtools, sort, awk, Perl and R. This is the claim in the
+      # README, re-run on every push rather than measured once.
+      - name: Diff against upstream
+        run: cargo xtask compare
 
   # The published minimum, checked rather than claimed.
   msrv:

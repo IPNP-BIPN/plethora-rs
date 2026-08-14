@@ -124,6 +124,31 @@ script itself on a different machine disagrees with that same output on 103,907
 of 623,699 rows. R does not reproduce itself across machines any more closely
 than this reproduces R.
 
+`cargo xtask compare` re-runs that claim rather than quoting it. It clones
+upstream, builds one corpus, hands it to `code/make_bed.sh` and
+`code/gc_correction.R` with the real samtools, bedtools, GNU sort, awk, Perl and
+R underneath, hands the same corpus to `plethora`, and diffs what each left on
+disk:
+
+```
+file                      bytes  result
+.bed                     346200  identical
+_sorted.bed              217200  identical
+_coverage.bed              4862  identical
+_read_depth.bed            3290  identical
+_gc_correct.txt            5703  equal to 3.4e-15 relative (52 rows differ in
+                                 their last digits)
+```
+
+Everything from the BAM to the read depth is byte-identical. The last file is
+the one that goes through `loess`, and it lands on the same residual. CI runs
+this on every push.
+
+`data/` holds upstream's reference files compressed, with `data/MANIFEST.toml`
+recording the SHA-256 of each plaintext and the commit it was taken at.
+`cargo xtask check-data` decompresses every one and re-checks it, so a
+compressed copy stays traceable to the file it came from.
+
 ## Layout
 
 ```
@@ -131,6 +156,8 @@ crates/
   plethora-compat/   bit-exact ports of Perl, R, GNU coreutils and samtools behaviour
   plethora-core/     the pipeline stages
   plethora/          the binary
+  xtask/             vendoring the reference data, and diffing against upstream
+data/                upstream's reference files, compressed, with a manifest
 ```
 
 `plethora-compat` is the fragile half, and it is separate on purpose: every
