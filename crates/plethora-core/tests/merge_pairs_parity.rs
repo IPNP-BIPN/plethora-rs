@@ -159,7 +159,7 @@ fn merge_pairs_matches_the_perl() {
         std::fs::read_to_string(dir.path().join("sample_edited.bed")).expect("read perl output");
 
     let lines = || text.lines().map(String::from);
-    let stats = measure(lines());
+    let stats = measure(lines()).expect("the corpus has proper pairs");
     let mut got = Vec::new();
     emit(lines(), &stats, &mut got).expect("emit");
     let got = String::from_utf8(got).expect("utf-8");
@@ -254,7 +254,7 @@ fn the_fragment_distribution_matches_the_perl() {
         f[2].parse().expect("sd"),
     );
 
-    let stats = measure(text.lines().map(String::from));
+    let stats = measure(text.lines().map(String::from)).expect("the corpus has proper pairs");
     assert_eq!(stats.n, n, "sample size");
     assert_eq!(stats.mean, mean, "mean inner distance");
     assert_eq!(stats.sd, sd, "standard deviation");

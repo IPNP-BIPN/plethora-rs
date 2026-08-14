@@ -17,8 +17,7 @@
 //! Two passes over the same file: the first measures the fragment-size
 //! distribution, the second writes the output using it.
 
-use std::fs::File;
-use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 use md5::{Digest, Md5};
@@ -149,17 +148,29 @@ impl<'a> BedpeLine<'a> {
     }
 }
 
+/// No pair looked proper, so there is no distribution to draw from.
+///
+/// The Perl divides by zero here and dies with "Illegal division by zero".
+/// Saying what went wrong is more use: on a real sample it means the alignment
+/// is against the wrong reference, or that the BAM was not name-sorted so
+/// `bamtobed -bedpe` paired nothing.
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "no proper pairs found, so there is no fragment size distribution. The \
+     alignment may be against a different reference than the domains, or the \
+     BAM may not have been name-sorted"
+)]
+pub struct NoProperPairs;
+
 /// First pass: measure the fragment-size distribution.
 ///
 /// Distances are collected only from pairs that look proper against
 /// [`INITIAL_MAX_INNER_DISTANCE`], and collection stops after
 /// [`SUFFICIENT_NUMBER_OF_READS`].
 ///
-/// # Panics
-/// Panics if no pair qualified, matching the division by zero the Perl would
-/// hit. A BEDPE with no proper pairs is not something to carry on from.
-#[must_use]
-pub fn measure<I: Iterator<Item = String>>(lines: I) -> FragmentStats {
+/// # Errors
+/// Returns [`NoProperPairs`] when nothing qualified.
+pub fn measure<I: Iterator<Item = String>>(lines: I) -> Result<FragmentStats, NoProperPairs> {
     let mut distance: Vec<i64> = Vec::new();
 
     for line in lines {
@@ -175,10 +186,9 @@ pub fn measure<I: Iterator<Item = String>>(lines: I) -> FragmentStats {
         }
     }
 
-    assert!(
-        !distance.is_empty(),
-        "no proper pairs found, so the fragment size distribution is undefined"
-    );
+    if distance.is_empty() {
+        return Err(NoProperPairs);
+    }
 
     let n = distance.len();
     let mut mean = 0.0_f64;
@@ -186,10 +196,10 @@ pub fn measure<I: Iterator<Item = String>>(lines: I) -> FragmentStats {
         mean += d as f64;
     }
     mean /= n as f64;
-    // sprintf("%.0f") rounds half to even, which is what Rust's {:.0} does.
-    let mean: i64 = format!("{mean:.0}")
-        .parse()
-        .expect("a rounded mean is an integer");
+    // sprintf("%.0f") rounds half to even, which is what round_ties_even does.
+    // Formatting through "{:.0}" and parsing back agrees on all four million
+    // values we checked, halves included; this way is simply infallible.
+    let mean = mean.round_ties_even() as i64;
 
     // Population variance, against the rounded mean.
     let mut sd = 0.0_f64;
@@ -198,17 +208,14 @@ pub fn measure<I: Iterator<Item = String>>(lines: I) -> FragmentStats {
         sd += centred * centred;
     }
     sd /= n as f64;
-    let sd = sd.sqrt();
-    let sd: i64 = format!("{sd:.0}")
-        .parse()
-        .expect("a rounded deviation is an integer");
+    let sd = sd.sqrt().round_ties_even() as i64;
 
-    FragmentStats {
+    Ok(FragmentStats {
         mean,
         sd,
         max_inner_distance: mean + 5 * sd,
         n,
-    }
+    })
 }
 
 /// How far to extend one unpaired read, drawn from the sample's distribution.
@@ -303,43 +310,57 @@ where
     out.flush()
 }
 
-/// Runs both passes over a `.bed` file, writing `*_edited.bed` beside it.
+/// Runs both passes over a BEDPE, writing the intervals to `output`.
 ///
-/// The file is read twice, as the Perl does, rather than held in memory: a
-/// whole-genome BEDPE runs to tens of gigabytes.
+/// The input is read twice, as the Perl does, rather than held in memory: a
+/// whole-genome BEDPE runs to tens of gigabytes. Both paths go through
+/// [`crate::io`], so a gzipped input reads and a `.gz` output compresses.
+///
+/// The output path is given rather than derived. Upstream derives it with a
+/// substitution that cannot see a `.gz` suffix, and a caller that compresses
+/// its intermediates already knows what it called them.
 ///
 /// # Errors
-/// Returns an error if the input cannot be read or the output cannot be
-/// written.
+/// Returns an error if the input cannot be read, the output cannot be written,
+/// or no pair looked proper.
+pub fn run_to(path: &Path, output: &Path) -> io::Result<FragmentStats> {
+    let read_lines =
+        || -> io::Result<_> { Ok(crate::io::open(path)?.lines().map_while(Result::ok)) };
+
+    let stats =
+        measure(read_lines()?).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    emit(read_lines()?, &stats, crate::io::create(output)?)?;
+    Ok(stats)
+}
+
+/// Runs both passes, writing `*_edited.bed` beside the input as upstream does.
 ///
-/// # Panics
-/// Panics if the input has no proper pairs; see [`measure`].
+/// `$outfile =~ s/.bed$/_edited.bed/` is a regex where the dot matches any
+/// character, so it also rewrites a file ending in "Xbed"; only the literal case
+/// arises here. A `.gz` suffix is carried across, which the Perl cannot do.
+///
+/// # Errors
+/// Returns an error if the name does not end in `.bed` or `.bed.gz`, or if
+/// either pass fails.
 pub fn run(path: &Path) -> io::Result<FragmentStats> {
-    let read_lines = || -> io::Result<_> {
-        Ok(BufReader::new(File::open(path)?)
-            .lines()
-            .map_while(Result::ok))
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "the input has no file name"))?;
+
+    let (stem, suffix) = if let Some(stem) = name.strip_suffix(".bed.gz") {
+        (stem, ".bed.gz")
+    } else if let Some(stem) = name.strip_suffix(".bed") {
+        (stem, ".bed")
+    } else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "expected a .bed or .bed.gz file",
+        ));
     };
 
-    let stats = measure(read_lines()?);
-
-    // `$outfile =~ s/.bed$/_edited.bed/` is a regex where the dot matches any
-    // character, so it also rewrites a file ending in "Xbed". Only the literal
-    // case arises here.
-    let out_path = path.with_file_name(format!(
-        "{}_edited.bed",
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .and_then(|n| n.strip_suffix(".bed"))
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "expected a .bed file"))?
-    ));
-
-    emit(
-        read_lines()?,
-        &stats,
-        BufWriter::new(File::create(out_path)?),
-    )?;
-    Ok(stats)
+    let output = path.with_file_name(format!("{stem}_edited{suffix}"));
+    run_to(path, &output)
 }
 
 #[cfg(test)]
@@ -532,7 +553,7 @@ mod tests {
             line_of(L("chr1", 0, 50, "chr1", 250, 300, "+", "-")),
             line_of(L("chr1", 0, 50, "chr1", 350, 400, "+", "-")),
         ];
-        let stats = measure(lines.into_iter());
+        let stats = measure(lines.into_iter()).expect("the corpus has proper pairs");
         assert_eq!(stats.n, 3);
         assert_eq!(stats.mean, 200);
         assert_eq!(stats.sd, 82, "population deviation, rounded");
@@ -548,7 +569,7 @@ mod tests {
             // Inner distance 2000: excluded from the estimate.
             line_of(L("chr1", 0, 50, "chr1", 2050, 2100, "+", "-")),
         ];
-        let stats = measure(lines.into_iter());
+        let stats = measure(lines.into_iter()).expect("the corpus has proper pairs");
         assert_eq!(stats.n, 1);
         assert_eq!(stats.mean, 100);
     }

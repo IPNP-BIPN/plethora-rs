@@ -119,7 +119,9 @@ pub fn make_bed(
             }
             bedpe_path = Some(bedpe.clone());
 
-            crate::merge_pairs::run(&bedpe)?;
+            // The output name is given rather than derived, so it carries the
+            // same compression as the rest of the run.
+            crate::merge_pairs::run_to(&bedpe, &edited)?;
         }
         Pairing::Single => {
             // No pairing, no fragment reconstruction: each mapped alignment is
