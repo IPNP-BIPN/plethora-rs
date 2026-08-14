@@ -109,6 +109,25 @@ Plethora-rs filters flags `0x100` and `0x800` before pairing. bedtools does not.
 Under bowtie2 the situation never arises, which is why the paper's pipeline
 never met it; under BWA-MEM it always does.
 
+### Name sorting follows samtools 1.20, and can follow the older rule
+
+`samtools sort -n` orders on `strnum_cmp`, which reads runs of digits as
+numbers. When two records carry the same name, the mates are ordered between
+themselves, and **samtools changed how in 1.20**: before that release the
+comparison fell back to the flags, after it the READ1/READ2 bits decide
+directly. The two rules disagree on real files, so a name-sorted BAM is not one
+thing to be identical to.
+
+Plethora-rs implements both, as `TieBreak::Since1_20` and
+`TieBreak::Before1_20`, and defaults to the current one. The differential tests
+ask the installed `samtools --version` which rule to expect, which is why they
+pass on this machine against 1.22 and on CI against 1.19.2. This surfaced as a
+CI failure that looked like a port bug and was not one.
+
+Downstream this only reorders records within a name, and `merge_pairs` reads a
+pair as a unit, so the coverage figures do not move. It matters if you diff a
+name-sorted BAM against one from another samtools.
+
 ### `trim_qc_report` does not delete files by default
 
 `trim_qc_report.R` calls `cleanup_old_files()` unconditionally, so merely running

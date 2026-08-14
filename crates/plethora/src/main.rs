@@ -166,6 +166,9 @@ enum Command {
         /// Run only the sample at this one-based index, as a job array does.
         #[arg(long)]
         index: Option<usize>,
+        /// How many samples to hold in flight, overriding `options.jobs`.
+        #[arg(short = 'j', long)]
+        jobs: Option<usize>,
     },
 
     /// Write scheduler job scripts for a configuration.
@@ -237,7 +240,8 @@ fn main() -> Result<()> {
             from,
             to,
             index,
-        } => run_pipeline(&config, &from, &to, index),
+            jobs,
+        } => run_pipeline(&config, &from, &to, index, jobs),
         Command::EmitJobs {
             config,
             scheduler,
@@ -443,8 +447,20 @@ fn run_align_report(bed: &Path, sample: &str, report: Option<&Path>) -> Result<(
     Ok(())
 }
 
-fn run_pipeline(config_path: &Path, from: &str, to: &str, index: Option<usize>) -> Result<()> {
+fn run_pipeline(
+    config_path: &Path,
+    from: &str,
+    to: &str,
+    index: Option<usize>,
+    jobs: Option<usize>,
+) -> Result<()> {
     let mut config = Config::load(config_path)?;
+    if let Some(jobs) = jobs {
+        if jobs == 0 {
+            bail!("-j must be at least one");
+        }
+        config.options.jobs = jobs;
+    }
     config.check_reference()?;
     config.create_directories()?;
 
