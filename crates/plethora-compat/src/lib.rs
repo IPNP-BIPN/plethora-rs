@@ -13,6 +13,7 @@
 //! real tool (see `tests/oracle/`).
 
 pub mod gnusort;
+pub mod loess;
 pub mod randlib;
 pub mod rmath;
 pub mod strnum;
