@@ -37,9 +37,15 @@ impl Entry {
     }
 
     /// Parses a line back.
+    ///
+    /// `zip.sh` writes the file name rather than the sample, so a report
+    /// written by upstream reads `HG00250_sorted.bed 55000000`. The R strips
+    /// that suffix on the way in (`gsub("_sorted.bed", "", SAMPLE_NAME)`) and
+    /// so does this, which is what lets one report hold lines from both.
     #[must_use]
     pub fn parse(line: &str) -> Option<Self> {
         let (sample, count) = line.split_once(' ')?;
+        let sample = sample.strip_suffix("_sorted.bed").unwrap_or(sample);
         Some(Self {
             sample: sample.to_string(),
             aligned_fragments: count.trim().parse().ok()?,

@@ -279,6 +279,42 @@ pub fn build<E: BuildHasher, A: BuildHasher, B: BuildHasher, D: BuildHasher>(
         .collect()
 }
 
+/// Reads the clean-up logs, returning the samples whose BAM and whose BED were
+/// verified.
+///
+/// Upstream does this with `grep "correct number of reads" logs/clean_*.out |
+/// uniq`, then reads columns 2 and 3. The `uniq` only collapses *adjacent*
+/// duplicates, which is why a set is the right shape here regardless.
+///
+/// # Errors
+/// Returns an error if the input cannot be read.
+pub fn read_clean_report<R: BufRead>(
+    input: R,
+) -> std::io::Result<(HashSet<String>, HashSet<String>)> {
+    let mut bams = HashSet::new();
+    let mut beds = HashSet::new();
+    for line in input.lines() {
+        let line = line?;
+        if !line.contains("correct number of reads") {
+            continue;
+        }
+        let fields: Vec<&str> = line.split('\t').collect();
+        let (Some(sample), Some(verified)) = (fields.get(1), fields.get(2)) else {
+            continue;
+        };
+        match *verified {
+            "bam" | "sorted bam" => {
+                bams.insert((*sample).to_string());
+            }
+            "bed" => {
+                beds.insert((*sample).to_string());
+            }
+            _ => {}
+        }
+    }
+    Ok((bams, beds))
+}
+
 /// Reads a trimming log.
 ///
 /// # Errors
@@ -296,6 +332,25 @@ pub fn read_trim_stats<R: BufRead>(input: R) -> std::io::Result<Vec<TrimStat>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `grep` leaves its own prefix on the line, and the fields are still
+    /// found by position because the prefix is not tab-separated from them.
+    #[test]
+    fn the_clean_log_is_read_through_greps_prefix() {
+        let log = "logs/clean_1.out:correct number of reads for:\tHG00250\tbed\tremoving:\tbam\n\
+                   correct number of reads for:\tHG00251\tbam\tremoving:\tfastq\n\
+                   correct number of reads for:\tHG00252\tsorted bam\tremoving:\tbam\n\
+                   something is wrong with the bed file for HG00253\n";
+        let (bams, beds) = read_clean_report(log.as_bytes()).expect("read");
+        assert_eq!(beds.len(), 1);
+        assert!(beds.contains("HG00250"));
+        assert_eq!(bams.len(), 2, "a sorted bam counts as the bam stage");
+        assert!(bams.contains("HG00251") && bams.contains("HG00252"));
+        assert!(
+            !bams.contains("HG00253") && !beds.contains("HG00253"),
+            "a failure line is not a completion"
+        );
+    }
 
     fn stat(file: &str, kind: &str, reads: u64) -> TrimStat {
         TrimStat {

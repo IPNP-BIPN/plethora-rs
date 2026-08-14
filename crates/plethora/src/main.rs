@@ -112,6 +112,10 @@ enum Command {
         /// Remove the files rather than only listing them.
         #[arg(long)]
         apply: bool,
+        /// The 1000 Genomes sequence index, which gives the expected read
+        /// count. Without it the first stage present anchors the chain.
+        #[arg(long)]
+        index: Option<PathBuf>,
         #[arg(long, default_value = "plethora.toml")]
         config: PathBuf,
     },
@@ -183,6 +187,21 @@ enum Command {
         output: PathBuf,
     },
 
+    /// Report how far each sample got, and what looks wrong. `trim_qc_report.R`.
+    QcReport {
+        #[arg(long, default_value = "plethora.toml")]
+        config: PathBuf,
+        /// The trimming log.
+        #[arg(long, default_value = "logs/trim_stats.txt")]
+        trim_stats: PathBuf,
+        /// The alignment report, from `align-report --report`.
+        #[arg(long, default_value = "align_report.txt")]
+        align_report: PathBuf,
+        /// The 1000 Genomes sequence index, which gives the expected counts.
+        #[arg(long)]
+        index: Option<PathBuf>,
+    },
+
     /// Write a starting `plethora.toml`.
     Init {
         #[arg(long, default_value = "plethora.toml")]
@@ -218,8 +237,9 @@ fn main() -> Result<()> {
             sample,
             rm_fastq,
             apply,
+            index,
             config,
-        } => run_clean(&sample, rm_fastq, apply, &config),
+        } => run_clean(&sample, rm_fastq, apply, &config, index.as_deref()),
         Command::Download {
             sample,
             index,
@@ -247,6 +267,12 @@ fn main() -> Result<()> {
             scheduler,
             output,
         } => run_emit(&config, &scheduler, &output),
+        Command::QcReport {
+            config,
+            trim_stats,
+            align_report,
+            index,
+        } => run_qc_report(&config, &trim_stats, Some(&align_report), index.as_deref()),
         Command::Init { output } => run_init(&output),
     }
 }
@@ -365,30 +391,213 @@ fn run_build_gc_model(bed: &Path, fasta: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 
-fn run_clean(sample: &str, rm_fastq: bool, apply: bool, config: &Path) -> Result<()> {
+fn run_clean(
+    sample: &str,
+    rm_fastq: bool,
+    apply: bool,
+    config: &Path,
+    index: Option<&Path>,
+) -> Result<()> {
     let config = Config::load(config)?;
-    let counts = onekg::clean::Counts::default();
+    let paths = onekg::clean::Paths {
+        fastq: &config.paths.fastq,
+        alignments: &config.paths.alignments,
+        results: &config.paths.results,
+    };
+
+    let gathered = onekg::clean::gather(sample, &paths)?;
+    if gathered.counts.present() == 0 {
+        println!("nothing found on disk for sample {sample}");
+        return Ok(());
+    }
+
     let pairing = if config.options.paired {
         onekg::clean::Pairing::Paired
     } else {
         onekg::clean::Pairing::Single
     };
+    if let Some(named) = gathered.named_pairing
+        && named != pairing
+    {
+        eprintln!(
+            "warning: the FASTQ names look {named:?} but the configuration says {pairing:?}; \
+             going with the configuration"
+        );
+    }
 
-    let plan =
-        onekg::clean::plan(&counts, None, pairing, rm_fastq).map_err(|e| anyhow::anyhow!("{e}"))?;
+    // The sequence index is what upstream calls the manifest: without it the
+    // first stage present anchors the chain instead.
+    let expected = match index {
+        Some(path) => {
+            let records = onekg::sample_index::read(pio::open(path)?)?;
+            let wanted = onekg::sample_index::for_sample(&records, sample);
+            if wanted.is_empty() {
+                bail!("sample {sample} is not in {}", path.display());
+            }
+            // The index lists both mates, so its read counts are per file.
+            Some(wanted.iter().filter_map(|r| r.read_count).sum::<u64>() / 2)
+        }
+        None => None,
+    };
 
+    let plan = onekg::clean::plan_with_reasons(&gathered.counts, expected, pairing, rm_fastq)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    print_counts(&gathered.counts);
     if plan.is_empty() {
-        println!("nothing to be done for sample {sample}");
+        println!("nothing can be removed yet for sample {sample}");
         return Ok(());
     }
-    for removal in &plan {
-        println!("{}", if apply { "removing" } else { "would remove" });
-        println!("  {removal:?}");
+
+    for step in &plan {
+        let files = onekg::clean::files_for(step.removal, sample, &paths, &gathered);
+        let present: Vec<_> = files.into_iter().filter(|f| f.exists()).collect();
+        if present.is_empty() {
+            continue;
+        }
+        // Upstream's exact line, which is what `qc-report` greps back out of
+        // the clean-up logs. Only on --apply, since it asserts the removal
+        // happened.
+        if apply {
+            println!("{}", onekg::clean::log_line(sample, *step));
+        }
+        for file in present {
+            if apply {
+                std::fs::remove_file(&file)
+                    .with_context(|| format!("removing {}", file.display()))?;
+                println!("  removed {}", file.display());
+            } else {
+                println!(
+                    "would remove {} (the {} matched)",
+                    file.display(),
+                    step.verified
+                );
+            }
+        }
     }
-    if apply {
-        bail!("applying the plan needs the file counts, which this build does not gather yet");
+    if !apply {
+        println!("\nnothing was removed; pass --apply to do it");
     }
     Ok(())
+}
+
+/// `trim_qc_report.R`, minus the deletions it does on the way.
+fn run_qc_report(
+    config: &Path,
+    trim_stats: &Path,
+    align_report: Option<&Path>,
+    index: Option<&Path>,
+) -> Result<()> {
+    let config = Config::load(config)?;
+
+    let stats = onekg::qc_report::read_trim_stats(pio::open(trim_stats)?)
+        .with_context(|| format!("reading {}", trim_stats.display()))?;
+    let summaries = onekg::qc_report::summarise(&stats);
+
+    // Expected counts come from the sequence index, halved because it lists
+    // both mates. Without one, no sample can reach the trimmed stage, which is
+    // upstream's behaviour too.
+    let mut expected: HashMap<String, (u64, usize)> = HashMap::new();
+    if let Some(path) = index {
+        let records = onekg::sample_index::read(pio::open(path)?)?;
+        for record in &records {
+            let entry = expected.entry(record.sample_name.clone()).or_insert((0, 0));
+            entry.0 += record.read_count.unwrap_or(0);
+            entry.1 += 1;
+        }
+        for value in expected.values_mut() {
+            value.0 /= 2;
+            value.1 /= 2;
+        }
+    }
+
+    let mut aligned: HashMap<String, usize> = HashMap::new();
+    if let Some(path) = align_report
+        && path.exists()
+    {
+        for entry in onekg::align_report::read_report(path)? {
+            aligned.insert(entry.sample, entry.aligned_fragments);
+        }
+    }
+
+    // `grep "correct number of reads" logs/clean_*.out`, without the shell.
+    let mut bams = HashSet::new();
+    let mut beds = HashSet::new();
+    if let Ok(entries) = std::fs::read_dir(&config.paths.logs) {
+        let mut logs: Vec<PathBuf> = entries
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("clean_"))
+            })
+            .collect();
+        logs.sort();
+        for log in logs {
+            let (b, d) = onekg::qc_report::read_clean_report(pio::open(&log)?)?;
+            bams.extend(b);
+            beds.extend(d);
+        }
+    }
+
+    let reports = onekg::qc_report::build(
+        &config.samples,
+        &summaries,
+        &expected,
+        &aligned,
+        &bams,
+        &beds,
+    );
+
+    println!(
+        "{:<5} {:<16} {:<8} {:>14} {:>14} {:>10} {:>12}",
+        "index", "sample", "stage", "total reads", "after trim", "filtered", "aligned"
+    );
+    let mut problems = Vec::new();
+    for report in &reports {
+        let index = report
+            .index
+            .map_or_else(|| "-".to_string(), |i| i.to_string());
+        let aligned = report
+            .percent_aligned()
+            .map_or_else(|| "-".to_string(), |p| format!("{:.1}%", p * 100.0));
+        println!(
+            "{index:<5} {:<16} {:<8} {:>14} {:>14} {:>9.1}% {aligned:>12}",
+            report.sample,
+            format!("{:?}", report.stage),
+            report.total_reads,
+            report.remaining_reads,
+            report.percent_filtered * 100.0,
+        );
+        if report.has_quality_problem() {
+            problems.push(report);
+        }
+    }
+
+    if !problems.is_empty() {
+        println!(
+            "\n{} sample(s) with fewer than 100M reads left or more than 10% filtered:",
+            problems.len()
+        );
+        for report in problems {
+            println!("  {}", report.sample);
+        }
+    }
+    println!("\nNo files were removed. Upstream's script deletes FASTQ files as a side");
+    println!("effect of being run; `plethora clean --apply` is where that lives here.");
+    Ok(())
+}
+
+fn print_counts(counts: &plethora_core::onekg::clean::Counts) {
+    let show = |name: &str, value: Option<u64>| match value {
+        Some(n) => println!("  {name:<12} {n}"),
+        None => println!("  {name:<12} absent"),
+    };
+    show("fastq", counts.fastq);
+    show("bam", counts.bam);
+    show("sorted bam", counts.sorted_bam);
+    show("bed", counts.bed);
 }
 
 fn run_download(sample: &str, index: &Path, root: &Path) -> Result<()> {

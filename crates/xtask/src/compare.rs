@@ -471,6 +471,21 @@ fn stage(root: &Path, upstream: &Path, work: &Path) -> Result<PathBuf> {
         }
     }
 
+    // `samtools sort -n -@ 12 -m 2G` asks for 24 GB, which upstream sized for a
+    // cluster node and a whole genome. A CI runner has a fraction of that and
+    // samtools fails outright. Threads and buffer size decide how the sort gets
+    // there, not where it arrives: `strnum_cmp` on the QNAME then the
+    // READ1/READ2 bits is a total order over the records, so the output is the
+    // same however it is spilled. Reported, since the comparison should never
+    // quietly run something other than what is on disk.
+    let make_bed = staged.join("code/make_bed.sh");
+    let text = std::fs::read_to_string(&make_bed)?;
+    if text.contains("-@ 12 -m 2G") {
+        std::fs::write(&make_bed, text.replace("-@ 12 -m 2G", "-@ 1 -m 512M"))?;
+        println!("note: samtools sort runs at -@ 1 -m 512M rather than -@ 12 -m 2G,");
+        println!("      which asks for 24 GB. The sort order does not depend on either.");
+    }
+
     let script = staged.join("code/merge_pairs.pl");
     let text = std::fs::read_to_string(&script)?;
     let shebang = text.lines().next().unwrap_or_default().to_string();

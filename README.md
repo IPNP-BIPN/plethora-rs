@@ -101,6 +101,8 @@ plethora init                      # writes plethora.toml
 plethora run -j 8                  # every sample, locally, over rayon
 plethora run --from coverage --to gc-correct   # or part of the chain
 plethora emit-jobs --scheduler slurm           # or hand it to a cluster
+plethora clean HG00250 --rm-fastq  # says what it would delete; --apply does it
+plethora qc-report                 # how far each sample got, and what looks wrong
 ```
 
 `--index` selects a single sample by position, which is what the emitted job
