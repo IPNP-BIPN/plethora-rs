@@ -7,7 +7,10 @@
 //! Skips when samtools or bedtools is missing, so the suite still runs without
 //! the bioinformatics stack installed.
 
-use std::io::Write;
+// Both write traits are in scope: `write!` picks by receiver, so a String
+// resolves through fmt and a child's stdin through io.
+use std::fmt::Write as _;
+use std::io::Write as _;
 use std::process::{Command, Stdio};
 
 use plethora_core::bam::bamtobed::{Aln, BedpeIter, bed};
@@ -59,7 +62,7 @@ fn corpus_sam() -> String {
 
     let mut sam = String::from("@HD\tVN:1.6\tSO:queryname\n");
     for c in chroms {
-        sam.push_str(&format!("@SQ\tSN:{c}\tLN:2000000\n"));
+        writeln!(sam, "@SQ\tSN:{c}\tLN:2000000").expect("format into a String cannot fail");
     }
 
     let seq = "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTAC";
@@ -86,37 +89,45 @@ fn corpus_sam() -> String {
         match kind {
             // Read 1 unmapped.
             7 => {
-                sam.push_str(&format!("{name}\t77\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}\n"));
-                sam.push_str(&format!(
-                    "{name}\t137\t{c2}\t{p2}\t{q2}\t{cig2}\t*\t0\t0\t{seq}\t{qual}\n"
-                ));
+                writeln!(sam, "{name}\t77\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}")
+                    .expect("format into a String cannot fail");
+                writeln!(
+                    sam,
+                    "{name}\t137\t{c2}\t{p2}\t{q2}\t{cig2}\t*\t0\t0\t{seq}\t{qual}"
+                )
+                .expect("format into a String cannot fail");
             }
             // Read 2 unmapped.
             8 => {
-                sam.push_str(&format!(
-                    "{name}\t73\t{c1}\t{p1}\t{q1}\t{cig1}\t*\t0\t0\t{seq}\t{qual}\n"
-                ));
-                sam.push_str(&format!(
-                    "{name}\t133\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}\n"
-                ));
+                writeln!(
+                    sam,
+                    "{name}\t73\t{c1}\t{p1}\t{q1}\t{cig1}\t*\t0\t0\t{seq}\t{qual}"
+                )
+                .expect("format into a String cannot fail");
+                writeln!(sam, "{name}\t133\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}")
+                    .expect("format into a String cannot fail");
             }
             // Both unmapped.
             9 => {
-                sam.push_str(&format!("{name}\t77\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}\n"));
-                sam.push_str(&format!(
-                    "{name}\t141\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}\n"
-                ));
+                writeln!(sam, "{name}\t77\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}")
+                    .expect("format into a String cannot fail");
+                writeln!(sam, "{name}\t141\t*\t0\t0\t*\t*\t0\t0\t{seq}\t{qual}")
+                    .expect("format into a String cannot fail");
             }
             // Both mapped, with the strands varying.
             _ => {
                 let f1 = if rng.below(2) == 0 { 99 } else { 83 };
                 let f2 = if f1 == 99 { 147 } else { 163 };
-                sam.push_str(&format!(
-                    "{name}\t{f1}\t{c1}\t{p1}\t{q1}\t{cig1}\t=\t{p2}\t0\t{seq}\t{qual}\n"
-                ));
-                sam.push_str(&format!(
-                    "{name}\t{f2}\t{c2}\t{p2}\t{q2}\t{cig2}\t=\t{p1}\t0\t{seq}\t{qual}\n"
-                ));
+                writeln!(
+                    sam,
+                    "{name}\t{f1}\t{c1}\t{p1}\t{q1}\t{cig1}\t=\t{p2}\t0\t{seq}\t{qual}"
+                )
+                .expect("format into a String cannot fail");
+                writeln!(
+                    sam,
+                    "{name}\t{f2}\t{c2}\t{p2}\t{q2}\t{cig2}\t=\t{p1}\t0\t{seq}\t{qual}"
+                )
+                .expect("format into a String cannot fail");
             }
         }
     }

@@ -10,6 +10,7 @@
 //! is actually used.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -62,7 +63,7 @@ fn corpus_fasta() -> String {
     let alphabet = b"ACGTacgtNnRYKMSW";
     let mut out = String::new();
     for i in 0..200 {
-        out.push_str(&format!(">dom{i:04}\n"));
+        writeln!(out, ">dom{i:04}").expect("format into a String cannot fail");
         let len = 60 + rng.below(200) as usize;
         let mut seq = String::new();
         for j in 0..len {
@@ -209,7 +210,6 @@ fn gc_correction_matches_the_r() {
     let gc_path = dir.path().join("domains_GC.txt");
     let mut depth_text = String::new();
     for (d, c) in &depth {
-        use std::fmt::Write as _;
         writeln!(
             depth_text,
             "{d}\t{}",
@@ -226,7 +226,6 @@ fn gc_correction_matches_the_r() {
     // other way would manufacture a disagreement the pipeline cannot have.
     let mut gc_text = String::new();
     for (d, p) in &gc {
-        use std::fmt::Write as _;
         writeln!(gc_text, "{d}\t{}", plethora_compat::awk::format_g(*p, 15)).expect("format");
     }
     std::fs::write(&gc_path, &gc_text).expect("write gc");
@@ -385,7 +384,7 @@ fn build_model_matches_bedtools_getfasta() {
     let alphabet = b"ACGTacgtNnRY";
     let mut fasta = String::new();
     for chrom in ["chr1", "chr2"] {
-        fasta.push_str(&format!(">{chrom}\n"));
+        writeln!(fasta, ">{chrom}").expect("format into a String cannot fail");
         for line in 0..40 {
             let _ = line;
             let seq: String = (0..60)
@@ -411,7 +410,8 @@ fn build_model_matches_bedtools_getfasta() {
         let chrom = if i % 2 == 0 { "chr1" } else { "chr2" };
         let start = rng.below(2000);
         let end = start + 50 + rng.below(300);
-        bed.push_str(&format!("{chrom}\t{start}\t{end}\tdom{i:03}\t255\t+\n"));
+        writeln!(bed, "{chrom}\t{start}\t{end}\tdom{i:03}\t255\t+")
+            .expect("format into a String cannot fail");
     }
     let bed_path = d.join("domains.bed");
     std::fs::write(&bed_path, &bed).expect("write bed");

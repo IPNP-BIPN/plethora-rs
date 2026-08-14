@@ -49,10 +49,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y samtools bedtools cutadapt
 
-      - name: Install R and dplyr
-        run: |
-          sudo apt-get install -y r-base
-          Rscript -e 'install.packages(c("dplyr", "tibble"), repos = "https://cloud.r-project.org")'
+      # The prebuilt Debian packages rather than install.packages: the source
+      # build of dplyr needs a toolchain and several system libraries, and it
+      # is the R that runs the oracle that matters here, not its provenance.
+      - name: Install R with dplyr
+        run: sudo apt-get install -y r-base r-cran-dplyr r-cran-tibble
 
       - name: Install Math::Random into the project-local oracle library
         run: |

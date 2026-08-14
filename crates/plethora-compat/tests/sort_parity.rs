@@ -9,7 +9,10 @@
 //! coverage of these comparators, so skipping loses breadth, not correctness.
 
 use std::cmp::Ordering;
-use std::io::Write;
+// Both write traits are in scope: `write!` picks by receiver, so a String
+// resolves through fmt and a child's stdin through io.
+use std::fmt::Write as _;
+use std::io::Write as _;
 use std::process::{Command, Stdio};
 
 use plethora_compat::gnusort::cmp_k1_k2n;
@@ -185,10 +188,12 @@ fn strnum_matches_samtools_sort_n() {
         // QNAME "*" is reserved, and samtools rejects an empty one.
         let qname = if name.is_empty() { "unnamed" } else { name };
         // POS encodes the input index so a stability failure is legible.
-        sam.push_str(&format!(
-            "{qname}\t{flag}\tchr1\t{}\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII\n",
+        writeln!(
+            sam,
+            "{qname}\t{flag}\tchr1\t{}\t60\t10M\t*\t0\t0\tACGTACGTAC\tIIIIIIIIII",
             i + 1
-        ));
+        )
+        .expect("format into a String cannot fail");
     }
 
     let mut child = Command::new("samtools")
