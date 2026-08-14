@@ -1,0 +1,25 @@
+[package]
+name = "plethora-core"
+description = "The plethora pipeline stages: trimming, coverage, GC correction and the 1000 Genomes chain"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+plethora-compat = { workspace = true }
+
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+noodles-bam = "0.94"
+noodles-bgzf = "0.51"
+noodles-sam = "0.89"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
