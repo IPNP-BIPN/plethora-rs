@@ -16,7 +16,7 @@ use std::io::Write as _;
 use std::process::{Command, Stdio};
 
 use plethora_compat::gnusort::cmp_k1_k2n;
-use plethora_compat::strnum::cmp_by_qname;
+use plethora_compat::strnum::{TieBreak, cmp_by_qname_with};
 
 /// A tiny deterministic generator, so the corpus is identical on every run and
 /// on every machine without pulling in a dependency.
@@ -196,6 +196,18 @@ fn strnum_matches_samtools_sort_n() {
         .expect("format into a String cannot fail");
     }
 
+    // The tie-break on records sharing a QNAME changed in samtools 1.20, so
+    // ask the installed one which rule it follows rather than assuming.
+    let version = Command::new("samtools")
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|s| s.lines().next().map(String::from))
+        .unwrap_or_default();
+    let rule = TieBreak::from_version(&version);
+    eprintln!("comparing against {version}, tie-break rule {rule:?}");
+
     let mut child = Command::new("samtools")
         .args(["sort", "-n", "-@", "1", "-O", "sam"])
         .stdin(Stdio::piped())
@@ -235,7 +247,7 @@ fn strnum_matches_samtools_sort_n() {
         let (ref nj, fj) = records[j];
         let ni = if ni.is_empty() { "unnamed" } else { ni };
         let nj = if nj.is_empty() { "unnamed" } else { nj };
-        cmp_by_qname(ni.as_bytes(), fi, nj.as_bytes(), fj)
+        cmp_by_qname_with(ni.as_bytes(), fi, nj.as_bytes(), fj, rule)
     });
 
     assert_eq!(got.len(), expected.len(), "record count changed");

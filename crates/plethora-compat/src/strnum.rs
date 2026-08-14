@@ -101,17 +101,71 @@ pub fn strnum_cmp(a: &[u8], b: &[u8]) -> Ordering {
     }
 }
 
+/// Which samtools the tie-break should follow.
+///
+/// The rule changed in 1.20. Up to 1.19 a tie on QNAME was broken by the pair
+/// bits alone, so a secondary and a supplementary record sharing those bits
+/// kept their input order; from 1.20 the secondary and supplementary bits enter
+/// the key as well.
+///
+/// This is unreachable from the plethora pipeline either way: bowtie2 emits
+/// neither kind of record, and the BWA-MEM path filters both before sorting.
+/// It is carried because the differential test runs against whatever samtools
+/// is installed, and a runner with an older one would otherwise report a
+/// disagreement that is a version difference rather than an error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TieBreak {
+    /// samtools 1.20 and later: READ1, READ2, then primary, supplementary,
+    /// secondary.
+    #[default]
+    Since1_20,
+    /// samtools 1.19 and earlier: the pair bits only.
+    Before1_20,
+}
+
+impl TieBreak {
+    /// Reads a `samtools --version` line and picks the matching rule.
+    ///
+    /// Anything unparseable is taken as current, since that is what a fresh
+    /// install gives.
+    #[must_use]
+    pub fn from_version(version: &str) -> Self {
+        let Some(rest) = version.split_whitespace().nth(1) else {
+            return Self::Since1_20;
+        };
+        let mut parts = rest.split('.');
+        let (Some(Ok(major)), Some(Ok(minor))) = (
+            parts.next().map(str::parse::<u32>),
+            parts.next().map(str::parse::<u32>),
+        ) else {
+            return Self::Since1_20;
+        };
+        if (major, minor) < (1, 20) {
+            Self::Before1_20
+        } else {
+            Self::Since1_20
+        }
+    }
+}
+
 /// The secondary key: where a record sits among others sharing its QNAME.
 ///
 /// samtools packs three flag bits into one integer so the comparison stays a
 /// plain subtraction, giving the order READ1, READ2, then primary,
-/// supplementary, secondary. Bowtie2 emits neither supplementary nor secondary
-/// records, so under the paper's pipeline only the 0xc0 bits matter; BWA-MEM
-/// emits both, which is exactly why the full key is carried here.
+/// supplementary, secondary.
 #[must_use]
 pub const fn pair_rank(flag: u16) -> u32 {
+    pair_rank_with(flag, TieBreak::Since1_20)
+}
+
+/// [`pair_rank`] under a named samtools rule.
+#[must_use]
+pub const fn pair_rank_with(flag: u16, rule: TieBreak) -> u32 {
     let f = flag as u32;
-    ((f & 0xc0) << 8) | ((f & 0x100) << 3) | ((f & 0x800) >> 3)
+    match rule {
+        TieBreak::Since1_20 => ((f & 0xc0) << 8) | ((f & 0x100) << 3) | ((f & 0x800) >> 3),
+        TieBreak::Before1_20 => f & 0xc0,
+    }
 }
 
 /// The complete `samtools sort -n` record comparison.
@@ -120,7 +174,20 @@ pub const fn pair_rank(flag: u16) -> u32 {
 /// stable, so callers must pair this with a stable sort.
 #[must_use]
 pub fn cmp_by_qname(a_qname: &[u8], a_flag: u16, b_qname: &[u8], b_flag: u16) -> Ordering {
-    strnum_cmp(a_qname, b_qname).then_with(|| pair_rank(a_flag).cmp(&pair_rank(b_flag)))
+    cmp_by_qname_with(a_qname, a_flag, b_qname, b_flag, TieBreak::Since1_20)
+}
+
+/// [`cmp_by_qname`] under a named samtools rule.
+#[must_use]
+pub fn cmp_by_qname_with(
+    a_qname: &[u8],
+    a_flag: u16,
+    b_qname: &[u8],
+    b_flag: u16,
+    rule: TieBreak,
+) -> Ordering {
+    strnum_cmp(a_qname, b_qname)
+        .then_with(|| pair_rank_with(a_flag, rule).cmp(&pair_rank_with(b_flag, rule)))
 }
 
 #[cfg(test)]
@@ -181,6 +248,41 @@ mod tests {
         let supplementary = pair_rank(0x40 | 0x800);
         let secondary = pair_rank(0x40 | 0x100);
         assert!(primary < supplementary && supplementary < secondary);
+    }
+
+    /// The rule changed in samtools 1.20, and the parser has to place a version
+    /// on the right side of that.
+    #[test]
+    fn the_tie_break_follows_the_samtools_version() {
+        assert_eq!(TieBreak::from_version("samtools 1.24"), TieBreak::Since1_20);
+        assert_eq!(TieBreak::from_version("samtools 1.20"), TieBreak::Since1_20);
+        assert_eq!(
+            TieBreak::from_version("samtools 1.19"),
+            TieBreak::Before1_20
+        );
+        assert_eq!(
+            TieBreak::from_version("samtools 1.13"),
+            TieBreak::Before1_20
+        );
+        assert_eq!(TieBreak::from_version("samtools 2.0"), TieBreak::Since1_20);
+        // Unparseable reads as current, which is what a fresh install gives.
+        assert_eq!(TieBreak::from_version("nonsense"), TieBreak::Since1_20);
+    }
+
+    /// Under the older rule a secondary and a supplementary record sharing
+    /// their pair bits compare equal, so the sort leaves them in input order.
+    #[test]
+    fn the_older_rule_ignores_the_secondary_and_supplementary_bits() {
+        let supplementary = 0x80 | 0x800;
+        let secondary = 0x80 | 0x100;
+        assert_ne!(
+            pair_rank_with(supplementary, TieBreak::Since1_20),
+            pair_rank_with(secondary, TieBreak::Since1_20)
+        );
+        assert_eq!(
+            pair_rank_with(supplementary, TieBreak::Before1_20),
+            pair_rank_with(secondary, TieBreak::Before1_20)
+        );
     }
 
     #[test]
