@@ -5,6 +5,8 @@
 //! that behaviour lives in `plethora-compat` and is pinned by golden vectors;
 //! this crate holds the pipeline logic that calls it.
 
+#[cfg(feature = "align")]
+pub mod align;
 pub mod bam;
 pub mod batch;
 pub mod bed;

@@ -37,6 +37,43 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Align a pair of FASTQ files, writing a BAM. Needs the `align` feature.
+    #[cfg(feature = "align")]
+    Align {
+        /// The index prefix, which is the FASTA path unless `index -p` said
+        /// otherwise.
+        #[arg(short = 'x')]
+        index: PathBuf,
+        /// First mate.
+        #[arg(short = '1')]
+        read1: PathBuf,
+        /// Second mate. Omit to align single-end.
+        #[arg(short = '2')]
+        read2: Option<PathBuf>,
+        /// Where the BAM goes.
+        #[arg(short = 'o')]
+        output: PathBuf,
+        #[arg(short = 't', default_value_t = 1)]
+        threads: usize,
+        /// `-K`, the batch size in input bases. Pin it to make a run repeatable
+        /// across thread counts.
+        #[arg(short = 'K')]
+        batch_bases: Option<i64>,
+        /// An `@RG` line for the output.
+        #[arg(short = 'R')]
+        read_group: Option<String>,
+    },
+
+    /// Build the aligner's index for a genome. Needs the `align` feature.
+    #[cfg(feature = "align")]
+    Index {
+        /// The genome FASTA.
+        fasta: PathBuf,
+        /// Index prefix [the FASTA path].
+        #[arg(short = 'p')]
+        prefix: Option<PathBuf>,
+    },
+
     /// Trim and filter a pair of FASTQ files.
     Trim {
         /// First mate.
@@ -218,6 +255,29 @@ enum Command {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        #[cfg(feature = "align")]
+        Command::Align {
+            index,
+            read1,
+            read2,
+            output,
+            threads,
+            batch_bases,
+            read_group,
+        } => run_align(
+            &index,
+            &read1,
+            read2.as_deref(),
+            &output,
+            threads,
+            batch_bases,
+            read_group,
+        ),
+        #[cfg(feature = "align")]
+        Command::Index { fasta, prefix } => {
+            plethora_core::align::build_index(&fasta, prefix.as_deref())
+                .map_err(|e| anyhow::anyhow!("{e}"))
+        }
         Command::Trim {
             read1,
             read2,
@@ -290,6 +350,32 @@ fn main() -> Result<()> {
     }
 }
 
+#[cfg(feature = "align")]
+#[allow(clippy::too_many_arguments)]
+fn run_align(
+    index: &Path,
+    read1: &Path,
+    read2: Option<&Path>,
+    output: &Path,
+    threads: usize,
+    batch_bases: Option<i64>,
+    read_group: Option<String>,
+) -> Result<()> {
+    use plethora_core::align;
+
+    let options = align::Options {
+        index_prefix: index.to_path_buf(),
+        read1: read1.to_path_buf(),
+        read2: read2.map(Path::to_path_buf),
+        threads,
+        batch_bases,
+        read_group,
+    };
+    align::align(&options, output).map_err(|e| anyhow::anyhow!("{e}"))?;
+    println!("{}", output.display());
+    Ok(())
+}
+
 fn run_trim(read1: &Path, read2: &Path, adapters: &str, log: Option<&Path>) -> Result<()> {
     let choice = match adapters {
         "detect" => trim::Adapters::Detect,
@@ -345,6 +431,15 @@ fn warn_if_nothing_survived(summary: &trim::TrimSummary) {
         ),
         trim::Survival::Ordinary => {}
     }
+}
+
+/// The trimmed mate if trimming produced one, else the mate itself.
+#[cfg(feature = "align")]
+fn preferring_filtered(read: &Path, mate: u8) -> PathBuf {
+    trim::filtered_name(read, mate)
+        .ok()
+        .filter(|f| f.exists())
+        .unwrap_or_else(|| read.to_path_buf())
 }
 
 /// The path as the trimming log records it, `fastq/<sample>/<file>`.
@@ -815,10 +910,33 @@ fn step_for_sample(config: &Config, sample: &str, step: Step) -> Result<()> {
             if bam.exists() {
                 return Ok(());
             }
+            #[cfg(feature = "align")]
+            {
+                use plethora_core::align;
+                let index = config.reference.index.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("reference.index is not set in the configuration")
+                })?;
+                let dir = config.fastq_dir(sample);
+                let (read1, read2) = mate_pair(&dir)
+                    .with_context(|| format!("looking for reads in {}", dir.display()))?;
+                // The trimmed mates when trimming ran, the originals otherwise,
+                // so aligning alone works and aligning after trim uses its
+                // output without being told which.
+                let options = align::Options {
+                    index_prefix: index.clone(),
+                    read1: preferring_filtered(&read1, 1),
+                    read2: Some(preferring_filtered(&read2, 2)),
+                    threads: config.options.threads,
+                    batch_bases: None,
+                    read_group: None,
+                };
+                align::align(&options, &bam).map_err(|e| anyhow::anyhow!("{e}"))
+            }
+            #[cfg(not(feature = "align"))]
             bail!(
-                "no aligner is wired in yet, and {} does not exist. Produce it \
-                 with bowtie2 for parity with the paper, or with bwa-mem4, then \
-                 rerun from the coverage step",
+                "this build has no aligner and {} does not exist. Build with \
+                 --features align, or produce it with bowtie2 for parity with \
+                 the paper, then rerun from the coverage step",
                 bam.display()
             )
         }
