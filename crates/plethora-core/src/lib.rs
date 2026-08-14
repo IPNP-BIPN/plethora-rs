@@ -10,3 +10,4 @@ pub mod bed;
 pub mod coverage;
 pub mod gc;
 pub mod merge_pairs;
+pub mod trim;

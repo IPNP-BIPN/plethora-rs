@@ -6,7 +6,7 @@ members = ["crates/*"]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-license = "MIT"
+license = "GPL-3.0-only"
 repository = "https://github.com/BenjaminDEMAILLE/Plethora-rs"
 authors = ["Benjamin Demaille"]
 
