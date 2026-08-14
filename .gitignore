@@ -1,0 +1,8 @@
+/target
+/alignments
+/results
+/logs
+/fastq/*_filtered.fastq.gz
+
+# Reference oracles used only by the parity tests. Rebuilt by `cargo xtask oracle`.
+/.oracle

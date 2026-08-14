@@ -1,0 +1,47 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/BenjaminDEMAILLE/Plethora-rs"
+authors = ["Benjamin Demaille"]
+
+[workspace.dependencies]
+plethora-compat = { path = "crates/plethora-compat", version = "0.1.0" }
+plethora-core = { path = "crates/plethora-core", version = "0.1.0" }
+
+anyhow = "1"
+thiserror = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# The ports below transcribe C, Perl and R line by line. Names, casts, loop
+# shapes and float comparisons follow the original source so a reader can diff
+# them against it; clippy's preferences would obscure exactly that. Each of
+# these is load-bearing somewhere: `float_cmp` is snorm's `s == 1.0` sign test,
+# `cast_possible_wrap` is the signed-`char` widening in phrtsd, and
+# `needless_range_loop` keeps the C index arithmetic visible.
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+similar_names = "allow"
+many_single_char_names = "allow"
+unreadable_literal = "allow"
+needless_range_loop = "allow"
+float_cmp = "allow"
+assign_op_pattern = "allow"
+too_many_lines = "allow"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
