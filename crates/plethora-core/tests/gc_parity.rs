@@ -222,12 +222,14 @@ fn gc_correction_matches_the_r() {
     let depth: Vec<(String, f64)> = read_pairs(&depth_path);
     let gc: HashMap<String, f64> = read_pairs(&gc_path).into_iter().collect();
 
-    // The vendored script cannot run as it stands: `as.tbl()` was deprecated in
-    // dplyr 1.0.0 and is defunct in 1.2.1, so gc_correction.R dies before
-    // reading a single row on any dplyr from the last five years. The vendored
-    // copy stays byte-identical to upstream and the single substitution is
-    // applied here, in the open, so what is being compared against is exactly
-    // upstream plus that one line.
+    // The vendored script cannot run against the dplyr installed here.
+    // `as.tbl()` was deprecated in dplyr 1.0.0 (May 2020) but only made defunct
+    // in 1.2.0, so for five years it merely warned and the script ran; from
+    // 1.2.0 on it stops before reading a row. This is a forward-looking break,
+    // not a historical one: anyone who ran plethora before 1.2.0 saw a warning
+    // and correct output. The vendored copy stays byte-identical to upstream
+    // and the single substitution is applied here, in the open, so what is
+    // being compared against is exactly upstream plus that one line.
     let pristine = std::fs::read_to_string(&script).expect("read the oracle");
     let patched = pristine.replace("X <- as.tbl(X)", "X <- X");
     assert_eq!(
