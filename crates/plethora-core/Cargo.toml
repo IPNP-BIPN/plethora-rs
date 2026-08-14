@@ -21,6 +21,7 @@ md-5 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"
+plethora-compat = { workspace = true }
 
 [lints]
 workspace = true

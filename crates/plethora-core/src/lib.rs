@@ -8,4 +8,5 @@
 pub mod bam;
 pub mod bed;
 pub mod coverage;
+pub mod gc;
 pub mod merge_pairs;

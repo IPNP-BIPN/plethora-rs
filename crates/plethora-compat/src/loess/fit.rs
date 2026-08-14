@@ -66,6 +66,18 @@ pub fn local_fit(
         _ => 3,
     };
 
+    // R warns "span too small. fewer data values than degrees of freedom" here
+    // and carries on into a design matrix with fewer rows than coefficients.
+    // Its own source marks the consequence: `ehg127` copies the upper triangle
+    // with `do 22 i=1,k / do 23 j=i,k / u(i,j)=b(i,j)`, above a comment reading
+    // "FIXME: this has i = 3 vs bound 2 in a ggplot2 test". That is an
+    // out-of-bounds read, and what it returns is whatever sits next in memory.
+    // Refusing is the only defensible reading of an undefined one.
+    assert!(
+        nf >= k,
+        "span too small: a neighbourhood of {nf} point(s) cannot determine {k} coefficients"
+    );
+
     // Squared distance to every point, indexed by the original point number.
     let mut dist = vec![0.0; n + 1];
     for i in 1..=n {
