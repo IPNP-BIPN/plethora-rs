@@ -17,24 +17,15 @@
 //! Gzipped inputs are accepted, since that is how such files are usually kept.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read};
-use std::path::PathBuf;
+use std::io::BufRead;
+use std::path::{Path, PathBuf};
 
 use plethora_core::gc::correction::{Row, correct};
 
-/// Reads a file, transparently decompressing a gzip member.
-fn read_lines(path: &PathBuf) -> Vec<String> {
-    let mut file = std::fs::File::open(path).expect("open the input");
-    let mut magic = [0_u8; 2];
-    let gzipped = file.read_exact(&mut magic).is_ok() && magic == [0x1f, 0x8b];
-
-    let file = std::fs::File::open(path).expect("reopen the input");
-    let reader: Box<dyn Read> = if gzipped {
-        Box::new(flate2::read::MultiGzDecoder::new(file))
-    } else {
-        Box::new(file)
-    };
-    BufReader::new(reader)
+/// Reads a file as lines, decompressing a gzipped one.
+fn read_lines(path: &Path) -> Vec<String> {
+    plethora_core::io::open(path)
+        .expect("open the input")
         .lines()
         .map_while(Result::ok)
         .collect()

@@ -19,8 +19,7 @@
 //! produced with it and correcting it would silently rescale every result by
 //! 0.1%. See `DIVERGENCES.md`.
 
-use std::fs::File;
-use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use plethora_compat::awk;
@@ -29,6 +28,7 @@ use crate::bam::bamtobed::{self, Aln, BedpeIter, is_pairable};
 use crate::bam::namesort;
 use crate::bam::reader::read_bam;
 use crate::bed::{intersect, merge, sort};
+use crate::io::Compress;
 
 /// How the reads were sequenced, which decides how they become intervals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,9 +83,13 @@ pub fn make_bed(
     pairing: Pairing,
     output: &Path,
     tmp_dir: &Path,
+    compress: Compress,
 ) -> Result<Outputs, Box<dyn std::error::Error>> {
     let prefix = output.to_string_lossy().into_owned();
-    let path = |suffix: &str| PathBuf::from(format!("{prefix}{suffix}"));
+    // Every output takes the same form, so a run is all compressed or all not
+    // and the stage that reads a file always looks for the name the stage
+    // before it wrote.
+    let path = |suffix: &str| compress.apply(&PathBuf::from(format!("{prefix}{suffix}")));
 
     let records: Vec<Aln> = read_bam(bam)?;
     let edited = path("_edited.bed");
@@ -101,7 +105,7 @@ pub fn make_bed(
                 namesort::sort_by_name(pairable, namesort::DEFAULT_RUN_RECORDS, tmp_dir)?;
 
             let bedpe = path(".bed");
-            let mut writer = BufWriter::new(File::create(&bedpe)?);
+            let mut writer = crate::io::create(&bedpe)?;
             let mut pairs = BedpeIter::new(sorted_records.into_iter());
             for record in pairs.by_ref() {
                 writeln!(writer, "{record}")?;
@@ -120,7 +124,7 @@ pub fn make_bed(
         Pairing::Single => {
             // No pairing, no fragment reconstruction: each mapped alignment is
             // its own interval and goes straight to the sort.
-            let mut writer = BufWriter::new(File::create(&edited)?);
+            let mut writer = crate::io::create(&edited)?;
             for record in &records {
                 if let Some(line) = bamtobed::bed(record) {
                     writeln!(writer, "{line}")?;
@@ -135,27 +139,24 @@ pub fn make_bed(
         lines_of(&edited)?,
         sort::DEFAULT_RUN_LINES,
         tmp_dir,
-        BufWriter::new(File::create(&sorted)?),
+        crate::io::create(&sorted)?,
     )?;
 
     let temp = path("_temp.bed");
     intersect::intersect_wao(
         lines_of(reference)?,
         lines_of(&sorted)?,
-        BufWriter::new(File::create(&temp)?),
+        crate::io::create(&temp)?,
     )?;
 
     // The awk that permutes thirteen columns into five, putting the domain name
     // where bedtools reads a chromosome so the merge groups by domain.
     let permuted = permute(lines_of(&temp)?);
     let coverage = path("_coverage.bed");
-    merge::merge_sum(permuted, 5, BufWriter::new(File::create(&coverage)?))?;
+    merge::merge_sum(permuted, 5, crate::io::create(&coverage)?)?;
 
     let read_depth = path("_read_depth.bed");
-    write_read_depth(
-        lines_of(&coverage)?,
-        BufWriter::new(File::create(&read_depth)?),
-    )?;
+    write_read_depth(lines_of(&coverage)?, crate::io::create(&read_depth)?)?;
 
     // Upstream removes these two and keeps the rest.
     let _ = std::fs::remove_file(&edited);
@@ -215,11 +216,10 @@ where
     out.flush()
 }
 
-/// Reads a file as lines, skipping ones that fail to decode.
+/// Reads a file as lines, decompressing it if it is gzipped and skipping lines
+/// that fail to decode.
 fn lines_of(path: &Path) -> io::Result<impl Iterator<Item = String>> {
-    Ok(BufReader::new(File::open(path)?)
-        .lines()
-        .map_while(Result::ok))
+    Ok(crate::io::open(path)?.lines().map_while(Result::ok))
 }
 
 #[cfg(test)]

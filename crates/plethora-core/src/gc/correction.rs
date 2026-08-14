@@ -261,6 +261,17 @@ fn median(values: &mut [f64]) -> f64 {
     }
 }
 
+/// Writes the table to a path, compressing when the name ends in `.gz`.
+///
+/// A 623,699-domain table is about 40 MB written plain and 10 MB gzipped, and
+/// there is one per sample, which is why cohorts keep them compressed.
+///
+/// # Errors
+/// Returns an error if the file cannot be created or written.
+pub fn write_table_to(rows: &[Row], path: &std::path::Path) -> io::Result<()> {
+    write_table(rows, crate::io::create(path)?)
+}
+
 /// Writes the table as `write.table(sep = "\t", row.names = FALSE, quote = FALSE)`.
 ///
 /// # Errors
@@ -516,6 +527,35 @@ mod tests {
             "results/HG00250_gc_correct.txt"
         );
         assert_eq!(output_name("results/other.txt"), "results/other.txt");
+    }
+
+    /// The same table, written compressed, reads back identically.
+    #[test]
+    fn the_table_round_trips_through_gzip() {
+        use std::io::Read as _;
+
+        let rows = vec![Row {
+            domain: "baseline_1_1".into(),
+            coverage: 33.2787,
+            percent_gc: 0.41,
+            k_gc: 0.990_282_562_851_831,
+            corrected_coverage: 2.222_236_689_446_68,
+        }];
+
+        let dir = tempfile::tempdir().unwrap();
+        let plain = dir.path().join("s_gc_correct.txt");
+        let gz = dir.path().join("s_gc_correct.txt.gz");
+        write_table_to(&rows, &plain).unwrap();
+        write_table_to(&rows, &gz).unwrap();
+
+        assert!(std::fs::metadata(&gz).unwrap().len() > 0);
+        let mut compressed = String::new();
+        crate::io::open(&gz)
+            .unwrap()
+            .read_to_string(&mut compressed)
+            .unwrap();
+        assert_eq!(compressed, std::fs::read_to_string(&plain).unwrap());
+        assert!(compressed.contains("baseline_1_1\t33.2787\t0.41\t"));
     }
 
     #[test]

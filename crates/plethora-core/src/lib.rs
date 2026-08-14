@@ -9,5 +9,7 @@ pub mod bam;
 pub mod bed;
 pub mod coverage;
 pub mod gc;
+pub mod io;
 pub mod merge_pairs;
+pub mod onekg;
 pub mod trim;
