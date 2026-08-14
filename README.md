@@ -1,0 +1,134 @@
+# plethora-rs
+
+Native Rust reimplementation of [plethora](https://github.com/dpastling/plethora),
+the Olduvai/DUF1220 copy-number pipeline, byte-identical target. Work in
+progress. Not the official plethora.
+
+The original is four shell scripts, four Perl scripts and two R scripts driving
+cutadapt, bowtie2, samtools, bedtools, GNU sort, awk and R. Its own README warns
+that "updates to samtools and bedtools may break plethora". This replaces the
+lot with one binary.
+
+> Astling DP, Heft IE, Jones KL, Sikela JM. "High resolution measurement of
+> DUF1220 domain copy number from whole genome sequence data" (2017) BMC
+> Genomics 18:614. https://doi.org/10.1186/s12864-017-3976-z
+
+## Status
+
+| Upstream stage | Replaced by | Verified against |
+|---|---|---|
+| `cutadapt` | [trim-galore](https://crates.io/crates/trim-galore) | cutadapt 5.2, exact on the no-adapter path |
+| `bowtie2` | [bwa-mem4](https://github.com/IPNP-BIPN/bwa-mem4) | pending IPNP-BIPN/bwa-mem4#61 |
+| `samtools sort -n` | `bam::namesort` | samtools 1.24, 1216 records |
+| `bedtools bamtobed` | `bam::bamtobed` | bedtools 2.31.1, 800 records |
+| `merge_pairs.pl` | `merge_pairs` | the Perl itself, 3000 lines |
+| `sort -k1,1 -k2,2n` | `bed::sort` | GNU sort, 4000 lines |
+| `bedtools intersect -wao` | `bed::intersect` | bedtools 2.31.1, 5185 lines |
+| `bedtools merge -c -o sum` | `bed::merge` | bedtools 2.31.1, 360 rows |
+| `awk` read depth | `coverage` | awk `OFMT`, 360 rows |
+| `gc_from_fasta.pl` | `gc::from_fasta` | the Perl itself, 200 sequences |
+| `build_gc_model.sh` | `gc::build_model` | bedtools getfasta, 60 domains |
+| `gc_correction.R` | `gc::correction` | R 4.6.1, 623,699 real domains |
+
+Still to come: the 1000 Genomes chain, batch orchestration, the CLI binary.
+
+## The interesting part
+
+Reproducing a pipeline is not reimplementing the documented algorithms. It is
+reproducing the specific implementations, including the parts nobody designed on
+purpose. Some of what had to be ported:
+
+- **RANDLIB.** `merge_pairs.pl` seeds Perl's `Math::Random` from an MD5 of every
+  input line and draws a normal deviate, so every extended read's length is a
+  function of RANDLIB's exact arithmetic. Two details decide it: `phrtsd` has two
+  implementations and the one a plain `cpanm` compiles drops the last character
+  of the phrase, so plethora hashes 31 characters of each 32-character MD5; and
+  `ichr` is a C `char`, which is signed, so a byte ≥ 0x80 arrives negative.
+
+- **R's `loess`.** `gc_correction.R` divides by `predict(loess(y ~ x))`. Those
+  are not the local regression: with the default `surface = "interpolate"`,
+  `loess` fits only at k-d tree vertices and interpolates between them. Measured
+  on a real input, exactly one fitted value in 53 is bit-equal between
+  `"interpolate"` and `"direct"`. Porting the easy one would have produced
+  quietly wrong numbers, so the tree, the vertex fits, LINPACK's `dqrdc`,
+  `dqrsl` and `dsvdc`, and the reference BLAS under them are all here.
+
+- **GNU `sort`'s third key.** `sort -k1,1 -k2,2n` is not stable and breaks a tie
+  on every named key by comparing the whole line. In a BED file of read
+  intervals that last-resort comparison orders most of the file.
+
+- **`awk`'s `OFMT`.** The published figures read `28.2794`, not `28.279401`,
+  because awk formats numbers at `%.6g`. On top of that sits a rule easy to
+  miss: an exactly integral value prints as an integer, which is how every
+  uncovered domain writes `0` rather than `0.00000`.
+
+- **bedtools' block ordering.** `bamtobed -bedpe` orders the two blocks by
+  comparing the chromosome *name as a string*, not the reference id, so the
+  first block is not read 1, and an unmapped mate always lands first because
+  `.` sorts below every chromosome name.
+
+Every one of these is pinned by golden vectors generated from the real tool, or
+by a differential test that runs it. See `DIVERGENCES.md` for what does not
+match and why.
+
+## Validation
+
+Beyond the per-stage differential tests, the GC correction is checked against a
+real upstream run: one sample of a 394-genome cohort processed with the original
+scripts.
+
+```
+read depth: 623699 domains
+percent.gc: 0 of 623699 disagree as text
+numeric:    worst relative 2.0e-14
+```
+
+The residual is the BLAS inside `loess`. For scale, running the upstream R
+script itself on a different machine disagrees with that same output on 103,907
+of 623,699 rows. R does not reproduce itself across machines any more closely
+than this reproduces R.
+
+## Layout
+
+```
+crates/
+  plethora-compat/   bit-exact ports of Perl, R, GNU coreutils and samtools behaviour
+  plethora-core/     the pipeline stages
+  plethora/          the binary
+```
+
+`plethora-compat` is the fragile half, and it is separate on purpose: every
+function in it exists because some undocumented detail of a third-party tool
+moves a digit in the final table, and each is pinned by vectors generated from
+that tool.
+
+## Building and testing
+
+```
+cargo build --release
+cargo test
+```
+
+The differential tests skip when their reference tool is missing, so the suite
+runs without the bioinformatics stack. To run them all you need samtools,
+bedtools, GNU coreutils `sort` (as `gsort` on macOS), cutadapt, R with dplyr,
+and Perl with `Math::Random`:
+
+```
+env -u PERL5LIB cpanm --notest -l .oracle/perl5 Math::Random
+```
+
+## Upstream
+
+Four verified problems in the original have been reported:
+[#13](https://github.com/dpastling/plethora/pull/13),
+[#14](https://github.com/dpastling/plethora/pull/14),
+[#15](https://github.com/dpastling/plethora/pull/15),
+[#16](https://github.com/dpastling/plethora/pull/16). None affects the core path
+a typical single-sample run takes, which is why the pipeline has worked for
+years.
+
+## Licence
+
+GPL-3.0-only, because it links `trim-galore`, which is GPL-3.0-only. The
+upstream plethora scripts are MIT, which is compatible in this direction.
