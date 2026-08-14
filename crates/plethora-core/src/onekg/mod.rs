@@ -8,4 +8,5 @@
 pub mod align_report;
 pub mod clean;
 pub mod download;
+pub mod preprocess;
 pub mod sample_index;
