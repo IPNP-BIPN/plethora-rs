@@ -13,6 +13,8 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
+use rayon::slice::ParallelSliceMut as _;
+
 use plethora_compat::gnusort::cmp_k1_k2n;
 
 /// Lines held in memory before a run is written out.
@@ -20,6 +22,26 @@ use plethora_compat::gnusort::cmp_k1_k2n;
 /// About 100 MB of BED text, comfortably below what `sort` allocates by
 /// default. Configurable so the tests can force spilling.
 pub const DEFAULT_RUN_LINES: usize = 2_000_000;
+
+/// Sorts one run, across every core.
+///
+/// Unstable, and parallel, both of which are safe here for the same reason:
+/// [`cmp_k1_k2n`] falls back to comparing the whole line, so two lines compare
+/// `Equal` only when they are byte-identical. A reordering among equal elements
+/// is therefore invisible in the output, and the result is the same total order
+/// however it was reached.
+///
+/// Below the threshold the sequential sort wins: rayon's split and join cost
+/// more than sorting a few thousand lines.
+fn sort_run(buffer: &mut [String]) {
+    const PARALLEL_THRESHOLD: usize = 8192;
+
+    if buffer.len() < PARALLEL_THRESHOLD {
+        buffer.sort_unstable_by(|a, b| cmp_k1_k2n(a.as_bytes(), b.as_bytes()));
+    } else {
+        buffer.par_sort_unstable_by(|a, b| cmp_k1_k2n(a.as_bytes(), b.as_bytes()));
+    }
+}
 
 /// Sorts lines, spilling runs into `tmp_dir` when they grow past `run_lines`.
 ///
@@ -43,7 +65,7 @@ where
     let mut buffer: Vec<String> = Vec::new();
 
     let flush_run = |buffer: &mut Vec<String>, runs: &mut Vec<PathBuf>| -> io::Result<()> {
-        buffer.sort_by(|a, b| cmp_k1_k2n(a.as_bytes(), b.as_bytes()));
+        sort_run(buffer);
         let path = tmp_dir.join(format!("bedsort-{}.run", runs.len()));
         let mut w = BufWriter::new(File::create(&path)?);
         for line in buffer.iter() {
@@ -63,7 +85,7 @@ where
     }
 
     if runs.is_empty() {
-        buffer.sort_by(|a, b| cmp_k1_k2n(a.as_bytes(), b.as_bytes()));
+        sort_run(&mut buffer);
         for line in buffer {
             writeln!(out, "{line}")?;
         }

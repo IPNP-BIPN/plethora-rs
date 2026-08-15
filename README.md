@@ -160,6 +160,42 @@ recording the SHA-256 of each plaintext and the commit it was taken at.
 `cargo xtask check-data` decompresses every one and re-checks it, so a
 compressed copy stays traceable to the file it came from.
 
+## Speed
+
+The sort runs across every core. Measured on this machine, sixteen of them,
+with the orders checked identical:
+
+| lines | sequential | parallel | |
+|---|---|---|---|
+| 1,000,000 | 967 ms | 144 ms | 6.7x |
+| 10,000,000 | 13.73 s | 1.99 s | 6.9x |
+
+That is the stage worth parallelising, because it is the one that grows: a
+whole-genome sample sorts a hundred million intervals, where the rest of the
+chain is linear passes over the same file.
+
+Three other things were tried and are not here, because measuring them
+alternately against the unchanged binary showed nothing:
+
+- **mimalloc and jemalloc.** No measurable difference, single-sample or under
+  `-j 8`, where allocator contention would show if it existed: 35.1 s of CPU
+  against 35.3 s. A first measurement suggested 3x, and was a cold-cache
+  artefact of comparing a first run against warm ones.
+- **Parallel BGZF decoding** of the BAM. Costs about 8% more CPU for no wall
+  time, even on a 79 MB alignment of random sequence that deflate cannot help.
+- **`--gzip`.** Four times smaller on disk and two to three times slower. It is
+  a space lever, not a speed one.
+
+The axis that pays is samples, not stages. Eight samples through `coverage` and
+`gc-correct`:
+
+```
+-j 1   38.06 s
+-j 8    5.81 s     6.6x
+```
+
+which is what `plethora run -j` and the emitted job arrays already do.
+
 ## Layout
 
 ```
