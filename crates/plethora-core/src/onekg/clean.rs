@@ -499,6 +499,68 @@ mod tests {
         assert_eq!(got.named_pairing, Some(Pairing::Single));
     }
 
+    /// The whole chain on a real layout: count what is on disk, decide, and
+    /// name the files. `plan` is exercised on its own above; this is the part
+    /// that only a directory can check, including the one asymmetry in it,
+    /// that a paired BED holds half as many lines as the BAM holds records.
+    #[test]
+    fn the_chain_agrees_across_all_four_stages() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        for sub in ["fastq/S1", "alignments", "results"] {
+            std::fs::create_dir_all(root.join(sub)).expect("mkdir");
+        }
+
+        // 2000 pairs: 2000 records in each mate, 4000 in the BAM, 2000 BED
+        // lines, which is the shape a real paired run produces.
+        let record = "@r\nACGT\n+\nIIII\n";
+        std::fs::write(root.join("fastq/S1/S1_1.fastq"), record.repeat(2000)).expect("mate 1");
+        std::fs::write(root.join("fastq/S1/S1_2.fastq"), record.repeat(2000)).expect("mate 2");
+        std::fs::write(root.join("results/S1.bed"), "chr1\t1\t2\n".repeat(2000)).expect("bed");
+
+        let fastq = root.join("fastq");
+        let alignments = root.join("alignments");
+        let results = root.join("results");
+        let paths = Paths {
+            fastq: &fastq,
+            alignments: &alignments,
+            results: &results,
+        };
+
+        let mut gathered = gather("S1", &paths).expect("gather");
+        assert_eq!(gathered.counts.fastq, Some(4000), "both mates");
+        assert_eq!(gathered.counts.bed, Some(2000), "one line per fragment");
+        // Standing in for a BAM, which would need one to be written here: the
+        // count is all `plan` reads, and reading it is covered by `gather`.
+        gathered.counts.bam = Some(4000);
+
+        let steps = plan_with_reasons(&gathered.counts, Some(4000), Pairing::Paired, true)
+            .expect("the counts agree, so there is no mismatch");
+        let removals: Vec<Removal> = steps.iter().map(|s| s.removal).collect();
+        assert!(removals.contains(&Removal::Fastq));
+        assert!(removals.contains(&Removal::Bam));
+        assert!(removals.contains(&Removal::Bed));
+
+        // Both mates are named, since both would be deleted.
+        let files = files_for(Removal::Fastq, "S1", &paths, &gathered);
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().all(|f| f.exists()));
+        assert_eq!(
+            files_for(Removal::Bam, "S1", &paths, &gathered),
+            vec![alignments.join("S1.bam")]
+        );
+
+        // And the asymmetry is load-bearing: a BED with as many lines as the
+        // BAM has records is wrong, not right.
+        let mut wrong = gathered.counts;
+        wrong.bed = Some(4000);
+        let err = plan_with_reasons(&wrong, Some(4000), Pairing::Paired, true)
+            .expect_err("a paired BED holds half the records");
+        assert_eq!(err.stage, "bed file");
+        assert_eq!(err.expected, 2000);
+        assert_eq!(err.found, 4000);
+    }
+
     /// The line `trim_qc_report.R` greps back out of the clean-up logs.
     #[test]
     fn the_log_line_is_upstreams() {
