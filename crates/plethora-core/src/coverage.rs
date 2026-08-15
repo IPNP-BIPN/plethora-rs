@@ -24,9 +24,9 @@ use std::path::{Path, PathBuf};
 
 use plethora_compat::awk;
 
-use crate::bam::bamtobed::{self, Aln, BedpeIter, is_pairable};
+use crate::bam::bamtobed::{self, BedpeIter, is_pairable};
 use crate::bam::namesort;
-use crate::bam::reader::read_bam;
+use crate::bam::reader::read_bam_streaming;
 use crate::bed::{intersect, merge, sort};
 use crate::io::Compress;
 
@@ -91,31 +91,35 @@ pub fn make_bed(
     // before it wrote.
     let path = |suffix: &str| compress.apply(&PathBuf::from(format!("{prefix}{suffix}")));
 
-    let records: Vec<Aln> = read_bam(bam)?;
     let edited = path("_edited.bed");
     let mut bedpe_path = None;
 
+    // Nothing here holds the alignment in memory. A 30x whole genome is over a
+    // billion records, and at 181 bytes each a `Vec` of them would be 137 GB;
+    // every stage reads them once, in order, so none of them needed one.
     match pairing {
         Pairing::Paired => {
-            let pairable: Vec<Aln> = records
-                .into_iter()
-                .filter(|a| is_pairable(a.flags))
-                .collect();
+            let mut failed: Option<std::io::Error> = None;
+            let pairable = read_bam_streaming(bam)?
+                .map_while(|r| capture(r, &mut failed))
+                .filter(|a| is_pairable(a.flags));
             let sorted_records =
-                namesort::sort_by_name(pairable, namesort::DEFAULT_RUN_RECORDS, tmp_dir)?;
+                namesort::sort_by_name_streaming(pairable, namesort::DEFAULT_RUN_RECORDS, tmp_dir)?;
+            check(failed)?;
 
+            let mut failed: Option<std::io::Error> = None;
             let bedpe = path(".bed");
             let mut writer = crate::io::create(&bedpe)?;
-            let mut pairs = BedpeIter::new(sorted_records.into_iter());
+            let mut pairs = BedpeIter::new(sorted_records.map_while(|r| capture(r, &mut failed)));
             for record in pairs.by_ref() {
                 writeln!(writer, "{record}")?;
             }
+            let orphans = pairs.orphans();
+            drop(pairs);
             writer.flush()?;
-            if pairs.orphans() > 0 {
-                eprintln!(
-                    "warning: {} record(s) had no adjacent mate and were skipped",
-                    pairs.orphans()
-                );
+            check(failed)?;
+            if orphans > 0 {
+                eprintln!("warning: {orphans} record(s) had no adjacent mate and were skipped");
             }
             bedpe_path = Some(bedpe.clone());
 
@@ -127,8 +131,8 @@ pub fn make_bed(
             // No pairing, no fragment reconstruction: each mapped alignment is
             // its own interval and goes straight to the sort.
             let mut writer = crate::io::create(&edited)?;
-            for record in &records {
-                if let Some(line) = bamtobed::bed(record) {
+            for record in read_bam_streaming(bam)? {
+                if let Some(line) = bamtobed::bed(&record?) {
                     writeln!(writer, "{line}")?;
                 }
             }
@@ -170,6 +174,25 @@ pub fn make_bed(
         coverage,
         read_depth,
     })
+}
+
+/// Yields the value and stops the iterator on the first error, keeping it.
+///
+/// `map_while(Result::ok)` would do the same thing and lose the error, which
+/// is how a gzipped BEDPE once read as zero proper pairs instead of failing.
+fn capture<T>(result: std::io::Result<T>, failed: &mut Option<std::io::Error>) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(e) => {
+            *failed = Some(e);
+            None
+        }
+    }
+}
+
+/// Turns a captured error back into a failure.
+fn check(failed: Option<std::io::Error>) -> Result<(), std::io::Error> {
+    failed.map_or(Ok(()), Err)
 }
 
 /// `awk 'OFS="\t" {print $4,$2,$3,$1,$13}'`.

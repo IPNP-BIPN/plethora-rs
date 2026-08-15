@@ -30,9 +30,14 @@ use super::bamtobed::Aln;
 
 /// How many records a sorting run holds before it spills to disk.
 ///
-/// At roughly 80 bytes a record this is about 400 MB, in the range of the
-/// `-m 2G` per thread upstream gives samtools. Configurable because the tests
-/// need to force spilling on inputs small enough to eyeball.
+/// A record costs about 181 bytes once its QNAME and reference name are
+/// counted, so this is roughly 900 MB, in the range of the `-m 2G` per thread
+/// upstream gives samtools. It is now the whole memory bound for the stage
+/// rather than a spilling threshold on top of one: nothing holds the alignment
+/// itself. Note that `run -j N` multiplies it by N.
+///
+/// Configurable because the tests need to force spilling on inputs small
+/// enough to eyeball.
 pub const DEFAULT_RUN_RECORDS: usize = 5_000_000;
 
 /// Sorts records by name, spilling runs to disk when they exceed `run_records`.
@@ -47,6 +52,29 @@ pub const DEFAULT_RUN_RECORDS: usize = 5_000_000;
 /// # Panics
 /// Panics if `run_records` is zero, which would never make progress.
 pub fn sort_by_name<I>(records: I, run_records: usize, tmp_dir: &Path) -> io::Result<Vec<Aln>>
+where
+    I: IntoIterator<Item = Aln>,
+{
+    sort_by_name_streaming(records, run_records, tmp_dir)?.collect()
+}
+
+/// [`sort_by_name`] without holding the result in memory.
+///
+/// The runs already spill to disk; collecting the merge back into a `Vec` put
+/// the whole input in memory anyway, which at 181 bytes a record is 137 GB for
+/// a 30x whole genome. This yields them instead.
+///
+/// # Errors
+/// Returns an error if a run cannot be written, or, from the iterator, if one
+/// cannot be read back.
+///
+/// # Panics
+/// Panics if `run_records` is zero, which would never make progress.
+pub fn sort_by_name_streaming<I>(
+    records: I,
+    run_records: usize,
+    tmp_dir: &Path,
+) -> io::Result<Sorted>
 where
     I: IntoIterator<Item = Aln>,
 {
@@ -74,7 +102,7 @@ where
     if runs.is_empty() {
         // Everything fit, so no merge is needed and no temporary file was made.
         sort_run(&mut buffer);
-        return Ok(buffer);
+        return Ok(Sorted::InMemory(buffer.into_iter()));
     }
 
     if !buffer.is_empty() {
@@ -84,43 +112,72 @@ where
         runs.push(path);
     }
 
-    let merged = merge_runs(&runs)?;
-    for path in &runs {
-        // A failure to clean up is not a failure to sort.
-        let _ = std::fs::remove_file(path);
-    }
-    Ok(merged)
+    Merge::open(runs).map(Sorted::Merged)
 }
 
-/// Sorts one run in place, stably.
-fn sort_run(run: &mut [Aln]) {
-    run.sort_by(|a, b| cmp_by_qname(&a.name, a.flags, &b.name, b.flags));
-}
-
-/// Merges sorted runs, preserving input order across runs on a full tie.
+/// The sorted records, in order, without holding them all at once.
 ///
-/// A k-way merge that always takes the earliest run among equal keys, which is
-/// what keeps the whole sort stable: run `i` holds records that came before run
-/// `j > i` in the input.
-fn merge_runs(paths: &[std::path::PathBuf]) -> io::Result<Vec<Aln>> {
-    let mut readers: Vec<RunReader> = paths
-        .iter()
-        .map(RunReader::open)
-        .collect::<io::Result<_>>()?;
-    let mut heads: Vec<Option<Aln>> = readers
-        .iter_mut()
-        .map(RunReader::next)
-        .collect::<io::Result<_>>()?;
+/// Either the single in-memory run, when everything fit, or a lazy k-way merge
+/// over the spilled ones. The distinction is invisible to a caller: both yield
+/// the same records in the same order.
+pub enum Sorted {
+    InMemory(std::vec::IntoIter<Aln>),
+    Merged(Merge),
+}
 
-    let mut out = Vec::new();
-    loop {
+impl Iterator for Sorted {
+    type Item = io::Result<Aln>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::InMemory(it) => it.next().map(Ok),
+            Self::Merged(m) => m.next(),
+        }
+    }
+}
+
+/// A k-way merge over the spilled runs, one record at a time.
+///
+/// The run files are removed when this is dropped rather than when the merge
+/// finishes, so an abandoned merge does not leave them behind either.
+pub struct Merge {
+    readers: Vec<RunReader>,
+    heads: Vec<Option<Aln>>,
+    paths: Vec<std::path::PathBuf>,
+}
+
+impl Merge {
+    fn open(paths: Vec<std::path::PathBuf>) -> io::Result<Self> {
+        let mut readers: Vec<RunReader> = paths
+            .iter()
+            .map(RunReader::open)
+            .collect::<io::Result<_>>()?;
+        let heads: Vec<Option<Aln>> = readers
+            .iter_mut()
+            .map(RunReader::next)
+            .collect::<io::Result<_>>()?;
+        Ok(Self {
+            readers,
+            heads,
+            paths,
+        })
+    }
+}
+
+impl Iterator for Merge {
+    type Item = io::Result<Aln>;
+
+    /// Always takes the earliest run among equal keys, which is what keeps the
+    /// whole sort stable: run `i` holds records that came before run `j > i`
+    /// in the input.
+    fn next(&mut self) -> Option<Self::Item> {
         let mut best: Option<usize> = None;
-        for (i, head) in heads.iter().enumerate() {
+        for (i, head) in self.heads.iter().enumerate() {
             let Some(candidate) = head else { continue };
             match best {
                 None => best = Some(i),
                 Some(b) => {
-                    let current = heads[b].as_ref().expect("best index holds a record");
+                    let current = self.heads[b].as_ref().expect("best index holds a record");
                     // Strictly less, so an equal key leaves the earlier run in
                     // front and the merge stays stable.
                     if cmp_by_qname(
@@ -136,12 +193,30 @@ fn merge_runs(paths: &[std::path::PathBuf]) -> io::Result<Vec<Aln>> {
             }
         }
 
-        let Some(i) = best else { break };
-        out.push(heads[i].take().expect("chosen run holds a record"));
-        heads[i] = readers[i].next()?;
+        let i = best?;
+        let record = self.heads[i].take().expect("chosen run holds a record");
+        match self.readers[i].next() {
+            Ok(head) => {
+                self.heads[i] = head;
+                Some(Ok(record))
+            }
+            Err(e) => Some(Err(e)),
+        }
     }
+}
 
-    Ok(out)
+impl Drop for Merge {
+    fn drop(&mut self) {
+        for path in &self.paths {
+            // A failure to clean up is not a failure to sort.
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// Sorts one run in place, stably.
+fn sort_run(run: &mut [Aln]) {
+    run.sort_by(|a, b| cmp_by_qname(&a.name, a.flags, &b.name, b.flags));
 }
 
 /// Writes a sorted run in a compact length-prefixed form.

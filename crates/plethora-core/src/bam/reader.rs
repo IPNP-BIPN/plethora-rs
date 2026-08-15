@@ -17,6 +17,21 @@ use super::bamtobed::Aln;
 /// Returns an error if the file cannot be opened, the header cannot be parsed,
 /// or a record is malformed.
 pub fn read_bam<P: AsRef<Path>>(path: P) -> io::Result<Vec<Aln>> {
+    read_bam_streaming(path)?.collect()
+}
+
+/// [`read_bam`] without holding the file in memory.
+///
+/// A 30x whole genome is upwards of a billion records, and at 181 bytes each a
+/// `Vec` of them is 137 GB. Every stage downstream reads them once, in order,
+/// so nothing needed the `Vec` in the first place.
+///
+/// # Errors
+/// Returns an error if the file cannot be opened or the header cannot be
+/// parsed. A malformed record surfaces from the iterator.
+pub fn read_bam_streaming<P: AsRef<Path>>(
+    path: P,
+) -> io::Result<impl Iterator<Item = io::Result<Aln>>> {
     let mut reader = noodles_bam::io::reader::Builder.build_from_path(path)?;
     let header = reader.read_header()?;
 
@@ -27,12 +42,16 @@ pub fn read_bam<P: AsRef<Path>>(path: P) -> io::Result<Vec<Aln>> {
         .map(|k| String::from_utf8_lossy(k.as_ref()).into_owned())
         .collect();
 
-    let mut out = Vec::new();
-    for result in reader.records() {
-        let record = result?;
-        out.push(project(&record, &names)?);
-    }
-    Ok(out)
+    // `records()` borrows the reader, so the reader moves into the iterator
+    // and yields projected records as it goes.
+    Ok(std::iter::from_fn(move || {
+        let mut record = noodles_bam::Record::default();
+        match reader.read_record(&mut record) {
+            Ok(0) => None,
+            Ok(_) => Some(project(&record, &names)),
+            Err(e) => Some(Err(e)),
+        }
+    }))
 }
 
 /// Projects one record onto the fields the pipeline reads.

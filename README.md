@@ -160,6 +160,22 @@ recording the SHA-256 of each plaintext and the commit it was taken at.
 `cargo xtask check-data` decompresses every one and re-checks it, so a
 compressed copy stays traceable to the file it came from.
 
+## Memory
+
+Nothing holds the alignment. `coverage` reads the BAM, filters, name-sorts and
+pairs as one stream, so its footprint is the sort's run buffer rather than the
+file. Measured on the same input with the same 200,000-record run size:
+
+```
+collecting   390 MB
+streaming    108 MB
+```
+
+That is the difference between running and not. A record costs about 181 bytes
+once its QNAME and reference name are counted, so a 30x whole genome, upwards of
+a billion records, would have needed 137 GB held at once. `run -j N` multiplies
+the run buffer by N, which is the number to size a node against.
+
 ## Speed
 
 The sort runs across every core. Measured on this machine, sixteen of them,
