@@ -80,6 +80,53 @@ pub struct TrimSummary {
     pub output_r2: PathBuf,
 }
 
+/// What a trimming run says about itself beyond the two counts.
+///
+/// Separated from the message so the judgement is testable and the wording is
+/// not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Survival {
+    /// There was nothing to trim.
+    NoInput,
+    /// Every pair was lost.
+    None,
+    /// Under half survived.
+    Low,
+    /// Nothing worth saying.
+    Ordinary,
+}
+
+impl TrimSummary {
+    /// How much came through, in the terms a caller would report.
+    ///
+    /// A 1000 Genomes run whose second mate is entirely Q2, Illumina's marker
+    /// for a failed read segment, trims to nothing under [`QUALITY_CUTOFF`] and
+    /// then loses every pair to [`MIN_LENGTH`]. That is the right answer and it
+    /// looks exactly like a broken trimmer, which is why it is worth naming.
+    #[must_use]
+    pub fn survival(&self) -> Survival {
+        if self.pairs_in == 0 {
+            return Survival::NoInput;
+        }
+        if self.pairs_out == 0 {
+            return Survival::None;
+        }
+        if self.pairs_out * 2 < self.pairs_in {
+            return Survival::Low;
+        }
+        Survival::Ordinary
+    }
+
+    /// The fraction of pairs that survived, in `0.0..=1.0`.
+    #[must_use]
+    pub fn survival_rate(&self) -> f64 {
+        if self.pairs_in == 0 {
+            return 0.0;
+        }
+        self.pairs_out as f64 / self.pairs_in as f64
+    }
+}
+
 /// A named adapter sequence, in the shape `TrimConfig` wants.
 pub type NamedAdapter = (String, Vec<u8>);
 
@@ -257,6 +304,39 @@ pub fn filtered_name(path: &Path, mate: u8) -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn summary(pairs_in: usize, pairs_out: usize) -> TrimSummary {
+        TrimSummary {
+            pairs_in,
+            pairs_out,
+            adapter: "Illumina".to_string(),
+            detection: None,
+            output_r1: std::path::PathBuf::new(),
+            output_r2: std::path::PathBuf::new(),
+        }
+    }
+
+    /// The boundary is at half, and it is `< half` rather than `<= half`, so a
+    /// run that keeps exactly half is not called low.
+    #[test]
+    fn survival_is_judged_at_half() {
+        assert_eq!(summary(0, 0).survival(), Survival::NoInput);
+        assert_eq!(summary(10_506, 0).survival(), Survival::None);
+        assert_eq!(summary(100, 49).survival(), Survival::Low);
+        assert_eq!(summary(100, 50).survival(), Survival::Ordinary);
+        assert_eq!(summary(100, 100).survival(), Survival::Ordinary);
+        // An odd count still splits where arithmetic says it does.
+        assert_eq!(summary(101, 50).survival(), Survival::Low);
+        assert_eq!(summary(101, 51).survival(), Survival::Ordinary);
+    }
+
+    /// The rate is a fraction, and an empty input is zero rather than a NaN
+    /// that would print as such in a report.
+    #[test]
+    fn the_survival_rate_never_divides_by_zero() {
+        assert!((summary(100, 25).survival_rate() - 0.25).abs() < 1e-12);
+        assert_eq!(summary(0, 0).survival_rate(), 0.0);
+    }
 
     #[test]
     fn output_names_follow_upstreams_sed() {

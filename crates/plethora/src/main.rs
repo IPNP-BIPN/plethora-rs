@@ -317,42 +317,33 @@ fn run_trim(read1: &Path, read2: &Path, adapters: &str, log: Option<&Path>) -> R
     // opens a file nothing produces; here the counts are already in hand.
     if let Some(log) = log {
         let discarded = (summary.pairs_in - summary.pairs_out) as u64;
-        let entries: Vec<(String, u64, u64)> = [read1, read2]
-            .iter()
-            .map(|p| (logged_path(p), summary.pairs_in as u64, discarded))
-            .collect();
+        // One entry for the pair, keyed by the first mate: see append_trim_stats
+        // for why a row per mate doubles every count the report checks.
+        let entries = [(logged_path(read1), summary.pairs_in as u64, discarded)];
         onekg::qc_report::append_trim_stats(log, &entries)
             .with_context(|| format!("appending to {}", log.display()))?;
     }
     Ok(())
 }
 
-/// Says so when trimming leaves nothing, or nearly nothing.
-///
-/// A run whose second mate is all Q2 trims to nothing under `-q 10`, and every
-/// pair then fails the minimum length. That is the right answer and it looks
-/// exactly like a broken trimmer, so it is worth naming: upstream prints the
-/// same two numbers and leaves the reader to work it out.
+/// Puts words to [`trim::TrimSummary::survival`]. The judgement is in the core,
+/// where it is tested; only the wording is here.
 fn warn_if_nothing_survived(summary: &trim::TrimSummary) {
-    if summary.pairs_in == 0 {
-        eprintln!("warning: the input held no read pairs");
-        return;
-    }
-    let kept = summary.pairs_out as f64 / summary.pairs_in as f64;
-    if summary.pairs_out == 0 {
-        eprintln!(
+    match summary.survival() {
+        trim::Survival::NoInput => eprintln!("warning: the input held no read pairs"),
+        trim::Survival::None => eprintln!(
             "warning: no pair survived trimming. Both mates must stay at least {} bases \
              after quality trimming at Q{}, so a run whose second mate is entirely low \
              quality loses every pair. Check the per-mate quality before assuming the \
              trimmer is at fault.",
             trim::MIN_LENGTH,
             trim::QUALITY_CUTOFF
-        );
-    } else if kept < 0.5 {
-        eprintln!(
+        ),
+        trim::Survival::Low => eprintln!(
             "warning: only {:.1}% of pairs survived trimming",
-            kept * 100.0
-        );
+            summary.survival_rate() * 100.0
+        ),
+        trim::Survival::Ordinary => {}
     }
 }
 
@@ -813,10 +804,7 @@ fn step_for_sample(config: &Config, sample: &str, step: Step) -> Result<()> {
             // to the same file, which is why the reader keeps the last entry
             // per file and kind rather than the first.
             let discarded = (summary.pairs_in - summary.pairs_out) as u64;
-            let entries: Vec<(String, u64, u64)> = [&read1, &read2]
-                .iter()
-                .map(|p| (logged_path(p), summary.pairs_in as u64, discarded))
-                .collect();
+            let entries = [(logged_path(&read1), summary.pairs_in as u64, discarded)];
             onekg::qc_report::append_trim_stats(
                 &config.paths.logs.join("trim_stats.txt"),
                 &entries,

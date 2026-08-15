@@ -62,14 +62,22 @@ impl TrimStat {
 /// checkout. Writing it here, where the counts already exist, is what makes
 /// `plethora qc-report` work without a manual step.
 ///
-/// The paths are logged as `fastq/<sample>/<file>`, since that prefix is how
-/// the sample is recovered from the line.
+/// **One row per pair, not per mate**, and the counts are pair counts. The R
+/// settles it in two places: it takes `expected.files = n() / 2` over index
+/// rows, which are two per pair, and compares that against
+/// `n.files = sum(type == "total")` over these rows; and it takes
+/// `expected.reads = sum(READ_COUNT) / 2`, again a pair count, against
+/// `total.reads = sum(read.count[type == "total"])`. Writing a row per mate
+/// doubles both and no sample ever matches its expectation.
+///
+/// The path is logged as `fastq/<sample>/<file>`, since that prefix is how the
+/// sample is recovered from the line, and is the first mate's.
 ///
 /// # Errors
 /// Returns an error if the log cannot be opened or appended to.
 pub fn append_trim_stats(
     log: &std::path::Path,
-    files: &[(String, u64, u64)],
+    pairs: &[(String, u64, u64)],
 ) -> std::io::Result<()> {
     use std::io::Write as _;
 
@@ -80,7 +88,7 @@ pub fn append_trim_stats(
         .create(true)
         .append(true)
         .open(log)?;
-    for (file, total, discarded) in files {
+    for (file, total, discarded) in pairs {
         writeln!(out, "{file}\ttotal\t{total}")?;
         writeln!(out, "{file}\tdiscarded\t{discarded}")?;
     }
@@ -374,12 +382,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let log = dir.path().join("logs/trim_stats.txt");
 
+        // One row per pair, keyed by the first mate, and holding pair counts.
         append_trim_stats(
             &log,
-            &[
-                ("fastq/HG00250/HG00250_1.fastq.gz".to_string(), 4000, 120),
-                ("fastq/HG00250/HG00250_2.fastq.gz".to_string(), 4000, 120),
-            ],
+            &[("fastq/HG00250/HG00250_1.fastq.gz".to_string(), 4000, 120)],
         )
         .expect("first append");
         // A rerun appends rather than replaces, as upstream's duplicates imply.
@@ -396,10 +402,13 @@ mod tests {
 
         let first = &summaries[0];
         assert_eq!(first.sample, "HG00250");
-        assert_eq!(first.total_reads, 8000, "both mates counted");
-        assert_eq!(first.filtered_reads, 240);
-        assert_eq!(first.files, 2);
-        assert_eq!(first.remaining_reads(), 7760);
+        assert_eq!(
+            first.total_reads, 4000,
+            "pairs, not reads across both mates"
+        );
+        assert_eq!(first.filtered_reads, 120);
+        assert_eq!(first.files, 1, "one row per pair, matching expected.files");
+        assert_eq!(first.remaining_reads(), 3880);
 
         assert_eq!(summaries[1].sample, "HG00251");
         assert_eq!(summaries[1].files, 1);
