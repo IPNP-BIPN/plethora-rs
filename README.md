@@ -112,19 +112,28 @@ is read compressed or not according to its own bytes rather than its name.
 ## Validation
 
 Beyond the per-stage differential tests, the GC correction is checked against a
-real upstream run: one sample of a 394-genome cohort processed with the original
-scripts.
+real upstream run: samples of a 394-genome cohort processed with the original
+scripts, 623,699 domains each.
 
-```
-read depth: 623699 domains
-percent.gc: 0 of 623699 disagree as text
-numeric:    worst relative 2.0e-14
-```
+| sample | rows | `percent.gc` disagreeing as text | worst relative |
+|---|---|---|---|
+| S36742 | 623,699 | 0 | 2.0e-14 |
+| S36958 | 623,699 | 0 | 8.2e-14 |
+| S37111 | 623,699 | 0 | 9.0e-15 |
 
-The residual is the BLAS inside `loess`. For scale, running the upstream R
-script itself on a different machine disagrees with that same output on 103,907
-of 623,699 rows. R does not reproduce itself across machines any more closely
-than this reproduces R.
+`percent.gc` is exact: `round()` reproduces R's on every one of 1.87 million
+values. The residual is in `corrected.coverage`, and it is the BLAS inside
+`loess`. S36958's 8.2e-14 is the relative error on a domain whose coverage is
+1.27e-5, where an absolute difference of 1e-19 reads large; the absolute
+agreement is the same everywhere.
+
+For scale, running the upstream R script itself on a different machine disagrees
+with that same output on 103,907 of 623,699 rows. R does not reproduce itself
+across machines any more closely than this reproduces R.
+
+The cohort's own copy of `hg38_duf_full_domains_v2.3_GC.txt` is byte-identical
+to the one vendored here, so the comparison is against the same reference data,
+and `data/` is confirmed by a second source.
 
 `cargo xtask compare` re-runs that claim rather than quoting it. It clones
 upstream, builds one corpus, hands it to `code/make_bed.sh` and

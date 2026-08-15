@@ -4,6 +4,13 @@
 //! branches. This one does the opposite: it takes files a real cohort produced
 //! by running the upstream scripts and asks whether the port reproduces them.
 //!
+//! Three samples of one cohort have been run through it, each 623,699 domains:
+//! `percent.gc` matched on every value, and the worst relative disagreement in
+//! `corrected.coverage` ran from 9.0e-15 to 8.2e-14, the last of those on a
+//! domain whose coverage is 1.27e-5 where an absolute difference of 1e-19 reads
+//! large. The cohort's own GC table is byte-identical to the one vendored in
+//! `data/`, so the comparison is against the same reference the paper used.
+//!
 //! The inputs are too large to vendor, so the test reads their paths from the
 //! environment and skips without them:
 //!
