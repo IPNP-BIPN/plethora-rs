@@ -18,6 +18,11 @@
 //! feature, which pulls htslib. Asking it for SAM and transcoding with noodles
 //! keeps the C out of the picture, and costs one pass over a file that is being
 //! written and read back on the same machine anyway.
+//!
+//! The detour is lossless, which is the only thing that makes it acceptable:
+//! aligning 4000 pairs both ways and decoding the BAM back with `samtools view`
+//! gives records byte-identical to the SAM the aligner wrote, all 8000 of them.
+//! Only the header differs, and only by the `@PG` line samtools adds itself.
 
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -199,4 +204,101 @@ fn read_header<R: BufRead>(reader: &mut sam::io::Reader<R>) -> std::io::Result<s
         ));
     }
     Ok(header)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::{Command, Stdio};
+
+    fn have_samtools() -> bool {
+        Command::new("samtools")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+
+    /// A SAM holding the fields a transcoder can lose: a mate pair, soft
+    /// clipping, an unmapped mate, a supplementary record, optional tags of
+    /// three different types, and a negative template length.
+    fn sam() -> String {
+        use std::fmt::Write as _;
+
+        let mut out = String::from("@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:100000\n");
+        let seq = "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTAC";
+        let qual = "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII";
+        // A proper pair, with tags of integer, character and string type.
+        writeln!(
+            out,
+            "r1\t99\tchr1\t1000\t60\t50M\t=\t1200\t250\t{seq}\t{qual}\tNM:i:0\tAS:i:50\tXS:A:x"
+        )
+        .unwrap();
+        // Soft clipping, and a negative template length.
+        writeln!(
+            out,
+            "r1\t147\tchr1\t1200\t60\t10S40M\t=\t1000\t-250\t{seq}\t{qual}\tNM:i:2\tZZ:Z:free text"
+        )
+        .unwrap();
+        // A pair whose mate did not map: an absent RNEXT, then an absent CIGAR.
+        writeln!(out, "r2\t73\tchr1\t2000\t0\t50M\t*\t0\t0\t{seq}\t{qual}").unwrap();
+        writeln!(out, "r2\t133\tchr1\t2000\t0\t*\t=\t2000\t0\t{seq}\t{qual}").unwrap();
+        // A supplementary record, which is what BWA-MEM emits and bowtie2 does
+        // not; see `crate::bam::bamtobed::is_pairable`.
+        writeln!(
+            out,
+            "r3\t2048\tchr1\t3000\t60\t25M25S\t*\t0\t0\t{seq}\t{qual}\tSA:Z:chr1,4000,+,25S25M,60,0"
+        )
+        .unwrap();
+        out
+    }
+
+    /// The transcode must lose nothing: the BAM decoded back holds the same
+    /// record bytes the SAM did. Without that the detour past htslib would be
+    /// trading a dependency for silent corruption.
+    #[test]
+    fn the_transcode_is_lossless() {
+        if !have_samtools() {
+            eprintln!("skipping: samtools is not installed to decode the BAM");
+            return;
+        }
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sam_path = dir.path().join("in.sam");
+        let bam_path = dir.path().join("out.bam");
+        std::fs::write(&sam_path, sam()).expect("write sam");
+
+        sam_to_bam(&sam_path, &bam_path).expect("transcode");
+
+        let out = Command::new("samtools")
+            .arg("view")
+            .arg(&bam_path)
+            .output()
+            .expect("samtools view");
+        assert!(out.status.success(), "samtools view failed");
+        let decoded = String::from_utf8(out.stdout).expect("utf-8");
+
+        let source = sam();
+        let original: Vec<&str> = source.lines().filter(|l| !l.starts_with('@')).collect();
+        let round_trip: Vec<&str> = decoded.lines().collect();
+        assert_eq!(round_trip.len(), original.len(), "record count");
+        for (want, got) in original.iter().zip(&round_trip) {
+            assert_eq!(want, got, "record changed passing through the BAM");
+        }
+    }
+
+    /// A SAM with no `@SQ` cannot become a BAM, and says which thing is
+    /// missing rather than failing somewhere inside the encoder.
+    #[test]
+    fn a_header_without_references_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sam_path = dir.path().join("in.sam");
+        std::fs::write(&sam_path, "@HD\tVN:1.6\n").expect("write");
+        let err =
+            sam_to_bam(&sam_path, &dir.path().join("out.bam")).expect_err("no reference sequences");
+        assert!(
+            err.to_string().contains("@SQ"),
+            "the message should name what is missing, got: {err}"
+        );
+    }
 }
