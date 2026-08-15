@@ -17,7 +17,9 @@
 //! `bwa-mem4` can write BAM itself, but only through its `multi-format`
 //! feature, which pulls htslib. Asking it for SAM and transcoding with noodles
 //! keeps the C out of the picture, and costs one pass over a file that is being
-//! written and read back on the same machine anyway.
+//! written and read back on the same machine anyway. The SAM is BGZF, so that
+//! file is six times smaller than it would otherwise be and both ends of the
+//! pass run across cores.
 //!
 //! The detour is lossless, which is the only thing that makes it acceptable:
 //! aligning 4000 pairs both ways and decoding the BAM back with `samtools view`
@@ -145,7 +147,15 @@ pub fn align(options: &Options, output: &Path) -> Result<(), Error> {
     // Beside the output rather than in the system temporary directory: a
     // whole-genome SAM is tens of gigabytes, and /tmp is usually the smallest
     // filesystem on a cluster node.
-    let sam_path = output.with_extension("sam.tmp");
+    //
+    // And compressed, which the `.gz` asks the aligner for. It writes BGZF for
+    // that suffix, on its own worker threads, and `crate::io::open` reads BGZF
+    // back in parallel. Measured on 400,000 pairs the two formats take the same
+    // time to write and read, so this buys nothing in speed; what it buys is
+    // 36 MB where plain SAM is 219, which for a whole genome is the difference
+    // between a temporary file that fits on the scratch disk and one that does
+    // not.
+    let sam_path = output.with_extension("sam.tmp.gz");
     let result = run_aligner(options, &sam_path)
         .and_then(|()| sam_to_bam(&sam_path, output).map_err(Error::Convert));
     let _ = std::fs::remove_file(&sam_path);
