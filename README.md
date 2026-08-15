@@ -199,8 +199,34 @@ alternately against the unchanged binary showed nothing:
   artefact of comparing a first run against warm ones.
 - **Parallel BGZF decoding** of the BAM. Costs about 8% more CPU for no wall
   time, even on a 79 MB alignment of random sequence that deflate cannot help.
-- **`--gzip`.** Four times smaller on disk and two to three times slower. It is
-  a space lever, not a speed one.
+- **rapidgzip on ordinary gzip.** A single deflate stream has no block
+  boundaries to split on, so the parallel decoder guesses and comes out slower:
+  46 ms against flate2's 36 ms on the same 58 MB. It is used only where the
+  input is BGZF, which the reader detects from the header rather than the name.
+
+### Compression
+
+`--gzip` writes BGZF rather than a single deflate stream. Every gzip reader
+still takes it, `bgzip -t` accepts it, and its 64 KB blocks compress and
+decompress on every core. Measured on a 58 MB intermediate:
+
+| | write | size | read back |
+|---|---|---|---|
+| gzip, one stream | 210 ms | 13.8 MB | 46 ms |
+| BGZF | 51 ms | 11.6 MB | 6.5 ms |
+
+End to end on a million pairs that turns `--gzip` from a two-to-three times
+penalty into no wall-clock cost at all, for a third of the disk:
+
+```
+plain   3.24 s    89 MB
+gzip    2.90 s    28 MB
+```
+
+The CPU is higher, about 4.5 s against 3.5 s, because compressing is real work.
+It is spread across cores, so the wall clock does not move.
+
+### Sample-level
 
 The axis that pays is samples, not stages. Eight samples through `coverage` and
 `gc-correct`:

@@ -116,7 +116,13 @@ pub fn make_bed(
             }
             let orphans = pairs.orphans();
             drop(pairs);
+            // Dropped, not merely flushed, and before anything reads the file
+            // back. A BGZF writer finalises on drop: that is when its workers
+            // are joined and the end-of-file block is written, so a flush alone
+            // leaves the last blocks unwritten and `run_to` below would open a
+            // truncated file.
             writer.flush()?;
+            drop(writer);
             check(failed)?;
             if orphans > 0 {
                 eprintln!("warning: {orphans} record(s) had no adjacent mate and were skipped");

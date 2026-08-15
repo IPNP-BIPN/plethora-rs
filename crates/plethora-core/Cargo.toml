@@ -20,6 +20,7 @@ noodles-core = "0.20"
 noodles-fasta = "0.66"
 noodles-sam = "0.89"
 flate2 = "1"
+rapidgzip-core = "0.3.1"
 md-5 = "0.10"
 trim-galore = "2.3.0"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
