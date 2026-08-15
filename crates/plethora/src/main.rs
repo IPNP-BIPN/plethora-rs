@@ -309,6 +309,7 @@ fn run_trim(read1: &Path, read2: &Path, adapters: &str, log: Option<&Path>) -> R
         "{} pairs in, {} out, adapter {}",
         summary.pairs_in, summary.pairs_out, summary.adapter
     );
+    warn_if_nothing_survived(&summary);
     println!("{}", summary.output_r1.display());
     println!("{}", summary.output_r2.display());
 
@@ -324,6 +325,35 @@ fn run_trim(read1: &Path, read2: &Path, adapters: &str, log: Option<&Path>) -> R
             .with_context(|| format!("appending to {}", log.display()))?;
     }
     Ok(())
+}
+
+/// Says so when trimming leaves nothing, or nearly nothing.
+///
+/// A run whose second mate is all Q2 trims to nothing under `-q 10`, and every
+/// pair then fails the minimum length. That is the right answer and it looks
+/// exactly like a broken trimmer, so it is worth naming: upstream prints the
+/// same two numbers and leaves the reader to work it out.
+fn warn_if_nothing_survived(summary: &trim::TrimSummary) {
+    if summary.pairs_in == 0 {
+        eprintln!("warning: the input held no read pairs");
+        return;
+    }
+    let kept = summary.pairs_out as f64 / summary.pairs_in as f64;
+    if summary.pairs_out == 0 {
+        eprintln!(
+            "warning: no pair survived trimming. Both mates must stay at least {} bases \
+             after quality trimming at Q{}, so a run whose second mate is entirely low \
+             quality loses every pair. Check the per-mate quality before assuming the \
+             trimmer is at fault.",
+            trim::MIN_LENGTH,
+            trim::QUALITY_CUTOFF
+        );
+    } else if kept < 0.5 {
+        eprintln!(
+            "warning: only {:.1}% of pairs survived trimming",
+            kept * 100.0
+        );
+    }
 }
 
 /// The path as the trimming log records it, `fastq/<sample>/<file>`.
@@ -778,6 +808,7 @@ fn step_for_sample(config: &Config, sample: &str, step: Step) -> Result<()> {
             let (read1, read2) = mate_pair(&dir)
                 .with_context(|| format!("looking for reads in {}", dir.display()))?;
             let summary = trim::trim_pair(&read1, &read2, &trim::Adapters::Detect)?;
+            warn_if_nothing_survived(&summary);
             // The counts go to the log `qc-report` reads. Every sample appends
             // to the same file, which is why the reader keeps the last entry
             // per file and kind rather than the first.

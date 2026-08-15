@@ -128,6 +128,15 @@ Downstream this only reorders records within a name, and `merge_pairs` reads a
 pair as a unit, so the coverage figures do not move. It matters if you diff a
 name-sorted BAM against one from another samtools.
 
+### Trimming says when nothing survives
+
+Upstream prints cutadapt's two counts and stops there. A 1000 Genomes run whose
+second mate is entirely Q2, which is Illumina's marker for a failed read
+segment, trims to nothing under `-q 10`, and every pair then fails
+`--minimum-length 80`. That is the right answer, and it looks exactly like a
+broken trimmer. Plethora-rs names it, and warns below half survival too. Only
+the message is new; the counts are the same.
+
 ### `trim_qc_report` does not delete files by default
 
 `trim_qc_report.R` calls `cleanup_old_files()` unconditionally, so merely running
