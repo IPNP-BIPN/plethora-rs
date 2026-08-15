@@ -172,9 +172,51 @@ pub fn for_sample<'a>(records: &'a [Record], sample: &str) -> Vec<&'a Record> {
     records.iter().filter(|r| r.sample_name == sample).collect()
 }
 
+/// The read count `clean_files.pl` compares a sample's files against.
+///
+/// Summed across every row for the sample, both mates, and **not** halved. The
+/// chain compares it against the FASTQ record count over both files and against
+/// the BAM record count, which both hold every read; only the BED is per
+/// fragment, and [`crate::onekg::clean::plan`] halves it there. Upstream says
+/// so where it does the same sum: "note both pairs will be present in alignment
+/// file, so we need to count both".
+///
+/// `None` when the sample is absent or no row carries a count, which upstream
+/// treats as "not in the manifest" and refuses to act on.
+#[must_use]
+pub fn expected_reads(records: &[Record], sample: &str) -> Option<u64> {
+    let total: u64 = for_sample(records, sample)
+        .iter()
+        .filter_map(|r| r.read_count)
+        .sum();
+    (total > 0).then_some(total)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The count is over both mates and is not halved: it is checked against
+    /// the FASTQ records and the BAM records, which both hold every read.
+    ///
+    /// Built by editing the real row, so the column positions stay the ones
+    /// the file actually uses.
+    #[test]
+    fn the_expected_count_covers_both_mates() {
+        let mate1 = ROW.replace("101519492", "10506");
+        let mate2 = mate1.replace("ERR020229_1.fastq.gz", "ERR020229_2.fastq.gz");
+        let index = format!("{HEADER}\n{mate1}\n{mate2}\n");
+
+        let records = read(index.as_bytes()).expect("read");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].read_count, Some(10_506));
+        assert_eq!(
+            expected_reads(&records, "HG00108"),
+            Some(21_012),
+            "both mates, not halved"
+        );
+        assert_eq!(expected_reads(&records, "NA19323"), None, "absent sample");
+    }
 
     const HEADER: &str = "FASTQ_FILE\tMD5\tRUN_ID\tSTUDY_ID\tSTUDY_NAME\tCENTER_NAME\tSUBMISSION_ID\tSUBMISSION_DATE\tSAMPLE_ID\tSAMPLE_NAME\tPOPULATION\tEXPERIMENT_ID\tINSTRUMENT_PLATFORM\tINSTRUMENT_MODEL\tLIBRARY_NAME\tRUN_NAME\tRUN_BLOCK_NAME\tINSERT_SIZE\tLIBRARY_LAYOUT\tPAIRED_FASTQ\tWITHDRAWN\tWITHDRAWN_DATE\tCOMMENT\tREAD_COUNT\tBASE_COUNT\tANALYSIS_GROUP";
 

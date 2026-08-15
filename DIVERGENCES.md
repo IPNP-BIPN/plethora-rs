@@ -128,6 +128,23 @@ Downstream this only reorders records within a name, and `merge_pairs` reads a
 pair as a unit, so the coverage figures do not move. It matters if you diff a
 name-sorted BAM against one from another samtools.
 
+### Two different counts, one index column
+
+`READ_COUNT` is per file, so a paired sample's rows hold it twice. The two
+consumers want different things from that, and getting either backwards makes a
+whole stage silently unreachable rather than loudly wrong.
+
+| Consumer | Expectation | Compared against |
+|---|---|---|
+| `clean_files.pl` | `sum(READ_COUNT)`, both mates | FASTQ records over both files, and BAM records |
+| `trim_qc_report.R` | `sum(READ_COUNT) / 2`, pairs | one trimming-log row per pair |
+
+Upstream says the first out loud where it does the sum: *"note both pairs will
+be present in alignment file, so we need to count both"*. The second follows
+from the R comparing `expected.files = n() / 2` against
+`n.files = sum(type == "total")`. Only the BED is per fragment, and the cleanup
+chain halves it there.
+
 ### Trimming says when nothing survives
 
 Upstream prints cutadapt's two counts and stops there. A 1000 Genomes run whose

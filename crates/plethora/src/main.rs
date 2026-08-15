@@ -491,12 +491,10 @@ fn run_clean(
     let expected = match index {
         Some(path) => {
             let records = onekg::sample_index::read(pio::open(path)?)?;
-            let wanted = onekg::sample_index::for_sample(&records, sample);
-            if wanted.is_empty() {
+            if onekg::sample_index::for_sample(&records, sample).is_empty() {
                 bail!("sample {sample} is not in {}", path.display());
             }
-            // The index lists both mates, so its read counts are per file.
-            Some(wanted.iter().filter_map(|r| r.read_count).sum::<u64>() / 2)
+            onekg::sample_index::expected_reads(&records, sample)
         }
         None => None,
     };
