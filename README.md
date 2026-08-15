@@ -228,15 +228,19 @@ It is spread across cores, so the wall clock does not move.
 
 ### Sample-level
 
-The axis that pays is samples, not stages. Eight samples through `coverage` and
-`gc-correct`:
+The axis that pays is samples, not stages, and it is now the default rather
+than something to remember. Eight samples through `coverage` and `gc-correct`,
+straight out of `plethora init`:
 
 ```
--j 1   38.06 s
--j 8    5.81 s     6.6x
+-j 1     23.05 s
+default   4.40 s     5.2x
 ```
 
-which is what `plethora run -j` and the emitted job arrays already do.
+The default is the core count capped at eight, because concurrency costs memory
+rather than being free: each sample in flight holds one name-sort run buffer of
+roughly 900 MB. Raise it against memory, not against cores. `-j` overrides it,
+and the emitted job arrays carry it through to the scheduler.
 
 ## Layout
 

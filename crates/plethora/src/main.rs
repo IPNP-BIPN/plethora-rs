@@ -954,9 +954,15 @@ paired = true
 # Upstream's cutadapt -q 10 and --minimum-length 80.
 quality_cutoff = 10
 min_length = 80
+# Outputs are written as BGZF, which every gzip reader takes and which both
+# compresses and decompresses across cores. On a million pairs it costs no wall
+# clock and a third of the disk.
 compress = false
 threads = 12
-jobs = 1
+# Samples in flight. Left out, this is the core count capped at eight. Each one
+# in flight holds a name-sort run buffer of roughly 900 MB, so raise it against
+# memory rather than against cores.
+jobs = 8
 aligner_args = []
 "#;
     std::fs::write(output, template)?;
