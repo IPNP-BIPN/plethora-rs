@@ -81,15 +81,17 @@ still be reproduced.
 
 ### Alignment: BWA-MEM instead of bowtie2
 
-Upstream aligns with `bowtie2 --very-sensitive`, end to end. Plethora-rs uses
-[bwa-mem4](https://github.com/IPNP-BIPN/bwa-mem4).
+Upstream aligns with `bowtie2 --very-sensitive`, end to end. Plethora-rs offers
+[bwa-mem4](https://crates.io/crates/bwa-mem4) instead, as `plethora align`,
+which exists only in a build with `--features align`. The default build has no
+aligner at all and takes a BAM from wherever you made it.
 
 BWA-MEM is a local aligner: it soft-clips, emits supplementary alignments, and
 selects a primary among equal-scoring hits differently. On a locus with more
 than 300 near-identical paralogues, that changes how multi-mapping reads are
-distributed, so **copy numbers from this path are not the paper's**.
+distributed, so **copy numbers from that path are not the paper's**.
 
-`plethora coverage --bam` accepts a BAM produced anywhere, so the bowtie2 recipe
+`plethora coverage -b` accepts a BAM produced anywhere, so the bowtie2 recipe
 remains available for paper parity:
 
 ```
