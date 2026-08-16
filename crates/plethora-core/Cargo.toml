@@ -10,20 +10,18 @@ authors.workspace = true
 
 [features]
 default = []
-# In-process alignment through bwa-mem4. Off by default: bwa-mem4 depends on
-# rust-htslib and libsais unconditionally, so enabling this pulls hts-sys,
-# libsais-sys, bzip2, lzma and zstd, and with them a C toolchain and bindgen.
-# None of that is used here, since the aligner is asked for SAM and noodles
-# writes the BAM; it is transitive weight that everyone who does not align
-# would otherwise pay. See IPNP-BIPN/bwa-mem4 for making those optional there.
-# NOT USABLE YET, and the version pin below says why. bwa-mem4 4.3.2 takes
-# needletail with its default features, which pull `liblzma`. That declares
-# `links = "lzma"`, and so does the `lzma-sys` that `zip` reaches through
-# trim-galore; cargo refuses any graph with two crates linking one native
-# library, so enabling this against 4.3.2 fails at resolution. The fix is
-# IPNP-BIPN/bwa-mem4#62; bump to 4.3.3 when it is published and this works.
-# The code, and everything below, is written and was verified against that
-# branch: index, align, coverage and gc-correct run end to end in one process.
+# In-process alignment through bwa-mem4. Off by default, but only because not
+# every run aligns: since IPNP-BIPN/bwa-mem4#62, #63 and #64 the aligner no
+# longer drags htslib, bindgen or mimalloc behind it, so `default-features =
+# false` below leaves `hts-sys` out of the graph entirely. What it still adds
+# over a build without this feature is the C libsais that `bwa-index` uses by
+# default, and libdeflate.
+#
+# #62 is the one that makes the dependency possible at all: before it,
+# needletail's default features pulled `liblzma`, which declares
+# `links = "lzma"` and collides with the `lzma-sys` that `zip` reaches through
+# trim-galore. That is a resolution failure, so the feature could not even be
+# declared.
 align = ["dep:bwa-mem4"]
 
 [dependencies]

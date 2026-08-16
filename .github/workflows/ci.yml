@@ -39,6 +39,13 @@ jobs:
       - name: Check the vendored reference data
         run: cargo xtask check-data
 
+      # The aligner is behind a feature, so the default build above never
+      # compiles it. Without this the module could rot unnoticed.
+      - name: Clippy and test with the aligner
+        run: |
+          cargo clippy --workspace --all-targets --features align
+          cargo test --workspace --features align
+
   # The tests that matter: each stage against the tool it replaces. A green here
   # means the port reproduces samtools, bedtools, GNU sort, awk, Perl and R on
   # this runner's versions.
