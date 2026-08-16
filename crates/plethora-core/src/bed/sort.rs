@@ -61,18 +61,20 @@ where
 {
     assert!(run_lines > 0, "a sorting run must hold at least one line");
 
-    let mut runs: Vec<PathBuf> = Vec::new();
+    // Removed when this goes out of scope rather than after a successful
+    // merge, so a failure part way through does not leave them behind.
+    let mut runs = Runs::default();
     let mut buffer: Vec<String> = Vec::new();
 
-    let flush_run = |buffer: &mut Vec<String>, runs: &mut Vec<PathBuf>| -> io::Result<()> {
+    let flush_run = |buffer: &mut Vec<String>, runs: &mut Runs| -> io::Result<()> {
         sort_run(buffer);
-        let path = tmp_dir.join(format!("bedsort-{}.run", runs.len()));
+        let path = tmp_dir.join(format!("bedsort-{}.run", runs.paths.len()));
         let mut w = BufWriter::new(File::create(&path)?);
         for line in buffer.iter() {
             writeln!(w, "{line}")?;
         }
         w.flush()?;
-        runs.push(path);
+        runs.paths.push(path);
         buffer.clear();
         Ok(())
     };
@@ -84,7 +86,7 @@ where
         }
     }
 
-    if runs.is_empty() {
+    if runs.paths.is_empty() {
         sort_run(&mut buffer);
         for line in buffer {
             writeln!(out, "{line}")?;
@@ -97,6 +99,7 @@ where
     }
 
     let mut readers: Vec<_> = runs
+        .paths
         .iter()
         .map(|p| File::open(p).map(|f| BufReader::new(f).lines()))
         .collect::<io::Result<_>>()?;
@@ -127,15 +130,56 @@ where
         heads[i] = readers[i].next().transpose()?;
     }
 
-    for path in &runs {
-        let _ = std::fs::remove_file(path);
-    }
     out.flush()
+}
+
+/// The spilled runs, removed when the sort ends however it ends.
+#[derive(Default)]
+struct Runs {
+    paths: Vec<PathBuf>,
+}
+
+impl Drop for Runs {
+    fn drop(&mut self) {
+        for path in &self.paths {
+            // A failure to clean up is not a failure to sort.
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A merge that fails part way must not leave its spilled runs behind.
+    /// They are removed on drop rather than after a successful merge, which is
+    /// the only version of this that holds when something goes wrong.
+    #[test]
+    fn a_failed_merge_leaves_no_runs() {
+        struct Fails;
+        impl Write for Fails {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                Err(io::Error::other("the sink gave up"))
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let lines = (0..100).map(|i| format!("chr1\t{i}\t{}", i + 10));
+        // Two lines a run, so it spills and has a merge to fail during.
+        let err = sort_lines(lines, 2, dir.path(), Fails).expect_err("the sink fails");
+        assert!(err.to_string().contains("gave up"), "got: {err}");
+
+        let left: Vec<_> = std::fs::read_dir(dir.path())
+            .expect("read dir")
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(left.is_empty(), "runs left behind: {left:?}");
+    }
 
     fn run(lines: &[&str], run_lines: usize) -> Vec<String> {
         let dir = tempfile::tempdir().unwrap();
