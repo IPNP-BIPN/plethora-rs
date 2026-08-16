@@ -12,6 +12,11 @@ authors.workspace = true
 name = "plethora"
 path = "src/main.rs"
 
+[features]
+default = []
+# In-process alignment. See crates/plethora-core/Cargo.toml for what it costs.
+align = ["plethora-core/align"]
+
 [dependencies]
 plethora-compat = { workspace = true }
 plethora-core = { workspace = true }
