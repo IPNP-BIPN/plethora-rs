@@ -241,15 +241,16 @@ decompress on every core. Measured on a 58 MB intermediate:
 | BGZF | 51 ms | 11.6 MB | 6.5 ms |
 
 End to end on a million pairs that turns `--gzip` from a two-to-three times
-penalty into no wall-clock cost at all, for a third of the disk:
+penalty into no wall-clock cost at all, for a third of the disk. The two runs
+alternate, four times each:
 
 ```
-plain   3.24 s    89 MB
-gzip    2.90 s    28 MB
+plain   1.90 s    89 MB
+gzip    1.93 s    28 MB
 ```
 
-The CPU is higher, about 4.5 s against 3.5 s, because compressing is real work.
-It is spread across cores, so the wall clock does not move.
+The CPU is higher, 3.4 s against 2.8 s, because compressing is real work. It is
+spread across cores, so the wall clock does not move.
 
 ### Sample-level
 
@@ -258,8 +259,8 @@ than something to remember. Eight samples through `coverage` and `gc-correct`,
 straight out of `plethora init`:
 
 ```
--j 1     23.05 s
-default   4.40 s     5.2x
+-j 1     18.9 s
+default   3.3 s     5.7x
 ```
 
 The default is the core count capped at eight, because concurrency costs memory
