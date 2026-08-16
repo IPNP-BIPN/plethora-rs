@@ -18,7 +18,7 @@ lot with one binary.
 | Upstream stage | Replaced by | Verified against |
 |---|---|---|
 | `cutadapt` | [trim-galore](https://crates.io/crates/trim-galore) | cutadapt 5.2, exact on the no-adapter path |
-| `bowtie2` | [bwa-mem4](https://github.com/IPNP-BIPN/bwa-mem4) | pending IPNP-BIPN/bwa-mem4#61 |
+| `bowtie2` | [bwa-mem4](https://crates.io/crates/bwa-mem4) | in process, behind `--features align` |
 | `samtools sort -n` | `bam::namesort` | samtools 1.24, 1216 records |
 | `bedtools bamtobed` | `bam::bamtobed` | bedtools 2.31.1, 800 records |
 | `merge_pairs.pl` | `merge_pairs` | the Perl itself, 3000 lines |
@@ -37,9 +37,14 @@ lot with one binary.
 | `config.sh` + `#BSUB` scripts | `config`, `batch` | LSF and Slurm arrays |
 | the scripts, called by hand | the `plethora` binary | end to end, on both paths |
 
-Still to come: `plethora align` over bwa-mem4, which waits on
-[IPNP-BIPN/bwa-mem4#61](https://github.com/IPNP-BIPN/bwa-mem4/pull/61) being
-merged and 4.3.2 published, and the vendored reference data.
+Every stage is here. With `--features align` the whole pipeline runs in one
+process with no external tool at all: trimming, alignment, coverage and GC
+correction, and the conserved domains normalise to exactly 2 as they should.
+
+That feature is off by default because not every run aligns, and because it is
+the only part that brings C into the build. It needs bwa-mem4 4.3.3 or later;
+before that the dependency could not even be declared, for reasons
+`crates/plethora-core/Cargo.toml` sets out.
 
 ## The interesting part
 
@@ -87,8 +92,12 @@ scripts by hand:
 
 ```sh
 plethora trim -1 fastq/S_1.fastq.gz -2 fastq/S_2.fastq.gz
-# align however you like; see DIVERGENCES.md for the bowtie2 recipe that
-# reproduces the paper
+# align with bwa-mem4 in process, if built with --features align:
+plethora index genomes/hg38.fa
+plethora align -x genomes/hg38.fa -1 fastq/S_1_filtered.fastq.gz \
+               -2 fastq/S_2_filtered.fastq.gz -o alignments/S.bam -t 12
+# or with bowtie2, which is what reproduces the paper. DIVERGENCES.md has the
+# recipe and says why the two differ.
 plethora coverage -r data/hg38_duf_full_domains_v2.3.bed -p paired \
                   -b alignments/S.bam -o results/S --gzip
 plethora gc-correct results/S_read_depth.bed.gz data/hg38_duf_full_domains_v2.3_GC.txt
@@ -277,6 +286,11 @@ crates/
   plethora/          the binary
   xtask/             vendoring the reference data, and diffing against upstream
 data/                upstream's reference files, compressed, with a manifest
+```
+
+```sh
+cargo build --release                    # no C in the graph
+cargo build --release --features align   # adds bwa-mem4 and its C libsais
 ```
 
 `plethora-compat` is the fragile half, and it is separate on purpose: every
