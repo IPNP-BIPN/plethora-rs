@@ -185,13 +185,16 @@ disk. It is the same resolution the shell reaches with
 `awk ... | bedtools merge -i -`, and the four files upstream keeps are still
 written, byte for byte.
 
-On a million pairs:
+On a million pairs, the two builds run alternately five times each:
 
 ```
                 peak disk    wall    CPU
-through files      201 MB   3.2 s   3.5 s
-through pipes       90 MB   2.0 s   3.0 s
+through files      201 MB   2.16 s  2.73 s
+through pipes       89 MB   1.95 s  2.93 s
 ```
+
+Less than half the disk, a tenth off the wall clock, and seven percent more CPU,
+which is the trade a thread buys: the stages overlap rather than taking turns.
 
 Both ends of the pipe are buffered, which is not an optimisation but the
 difference between working and not: a pipe write is a syscall, these stages emit
