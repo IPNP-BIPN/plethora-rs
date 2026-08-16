@@ -128,10 +128,6 @@ pub fn make_bed(
                 eprintln!("warning: {orphans} record(s) had no adjacent mate and were skipped");
             }
             bedpe_path = Some(bedpe.clone());
-
-            // The output name is given rather than derived, so it carries the
-            // same compression as the rest of the run.
-            crate::merge_pairs::run_to(&bedpe, &edited)?;
         }
         Pairing::Single => {
             // No pairing, no fragment reconstruction: each mapped alignment is
@@ -146,33 +142,59 @@ pub fn make_bed(
         }
     }
 
+    // `_edited.bed` and `_temp.bed` never exist. Upstream writes them and
+    // deletes them on the way out; here each is a pipe into the stage that
+    // reads it, so nothing observable changes and the run's peak disk falls by
+    // more than half. See `crate::io::piped_lines`.
+    let mut failed: Option<std::io::Error> = None;
     let sorted = path("_sorted.bed");
-    sort::sort_lines(
-        lines_of(&edited)?,
-        sort::DEFAULT_RUN_LINES,
-        tmp_dir,
-        crate::io::create(&sorted)?,
-    )?;
+    {
+        // A BEDPE exists exactly when the paired arm ran, so it selects the
+        // source rather than `pairing` being consulted a second time.
+        let edited: Box<dyn Iterator<Item = std::io::Result<String>>> = match bedpe_path.clone() {
+            Some(bedpe) => Box::new(crate::io::piped_lines(move |out| {
+                crate::merge_pairs::emit_to(&bedpe, out).map(|_stats| ())
+            })?),
+            // The single-end arm has no fragments to reconstruct, so its
+            // intervals were written straight out above.
+            None => Box::new(lines_of(&edited)?.map(Ok)),
+        };
+        sort::sort_lines(
+            edited.map_while(|l| capture(l, &mut failed)),
+            sort::DEFAULT_RUN_LINES,
+            tmp_dir,
+            crate::io::create(&sorted)?,
+        )?;
+    }
+    check(failed)?;
 
-    let temp = path("_temp.bed");
-    intersect::intersect_wao(
-        lines_of(reference)?,
-        lines_of(&sorted)?,
-        crate::io::create(&temp)?,
-    )?;
+    let reference_lines: Vec<String> = lines_of(reference)?.collect();
+    let sorted_for_intersect = sorted.clone();
+    let temp = crate::io::piped_lines(move |out| {
+        intersect::intersect_wao(
+            reference_lines.into_iter(),
+            lines_of(&sorted_for_intersect)?,
+            out,
+        )
+        .map_err(|e| std::io::Error::other(e.to_string()))
+    })?;
 
     // The awk that permutes thirteen columns into five, putting the domain name
     // where bedtools reads a chromosome so the merge groups by domain.
-    let permuted = permute(lines_of(&temp)?);
+    let mut failed: Option<std::io::Error> = None;
     let coverage = path("_coverage.bed");
-    merge::merge_sum(permuted, 5, crate::io::create(&coverage)?)?;
+    merge::merge_sum(
+        permute(temp.map_while(|l| capture(l, &mut failed))),
+        5,
+        crate::io::create(&coverage)?,
+    )?;
+    check(failed)?;
 
     let read_depth = path("_read_depth.bed");
     write_read_depth(lines_of(&coverage)?, crate::io::create(&read_depth)?)?;
 
-    // Upstream removes these two and keeps the rest.
+    // The single-end arm is the only one that still writes this.
     let _ = std::fs::remove_file(&edited);
-    let _ = std::fs::remove_file(&temp);
 
     Ok(Outputs {
         bedpe: bedpe_path,

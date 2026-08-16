@@ -176,6 +176,28 @@ once its QNAME and reference name are counted, so a 30x whole genome, upwards of
 a billion records, would have needed 137 GB held at once. `run -j N` multiplies
 the run buffer by N, which is the number to size a node against.
 
+### Intermediates
+
+`make_bed.sh` writes six files and deletes two of them on the way out. Those two
+never exist here: each is a pipe into the stage that reads it, on its own
+thread, so the two stages overlap instead of taking turns and nothing lands on
+disk. It is the same resolution the shell reaches with
+`awk ... | bedtools merge -i -`, and the four files upstream keeps are still
+written, byte for byte.
+
+On a million pairs:
+
+```
+                peak disk    wall    CPU
+through files      201 MB   3.2 s   3.5 s
+through pipes       90 MB   2.0 s   3.0 s
+```
+
+Both ends of the pipe are buffered, which is not an optimisation but the
+difference between working and not: a pipe write is a syscall, these stages emit
+a line at a time, and unbuffered the million-line intermediate cost a million
+syscalls and ran three times slower than the file it replaced.
+
 ## Speed
 
 The sort runs across every core. Measured on this machine, sixteen of them,

@@ -324,12 +324,32 @@ where
 /// Returns an error if the input cannot be read, the output cannot be written,
 /// or no pair looked proper.
 pub fn run_to(path: &Path, output: &Path) -> io::Result<FragmentStats> {
+    let mut out = crate::io::create(output)?;
+    let stats = emit_to(path, &mut out)?;
+    // Dropped before returning, so whatever reads the file next finds a
+    // finished one: a BGZF writer finalises on drop, not on flush.
+    out.flush()?;
+    drop(out);
+    Ok(stats)
+}
+
+/// Both passes over the BEDPE, writing the edited intervals wherever `out`
+/// goes.
+///
+/// Separated from [`run_to`] because the intervals usually go straight into the
+/// sort rather than to a file: upstream writes `*_edited.bed` and deletes it a
+/// few lines later, so there is nothing to keep.
+///
+/// # Errors
+/// Returns an error if the input cannot be read, if it holds no proper pair, or
+/// if the output cannot be written.
+pub fn emit_to<W: Write>(path: &Path, out: W) -> io::Result<FragmentStats> {
     let read_lines =
         || -> io::Result<_> { Ok(crate::io::open(path)?.lines().map_while(Result::ok)) };
 
     let stats =
         measure(read_lines()?).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    emit(read_lines()?, &stats, crate::io::create(output)?)?;
+    emit(read_lines()?, &stats, out)?;
     Ok(stats)
 }
 

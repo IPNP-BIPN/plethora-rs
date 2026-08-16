@@ -339,3 +339,126 @@ mod tests {
         assert_eq!(Compress::default(), Compress::No);
     }
 }
+
+/// Runs a stage on a thread and yields its output lines, with no file between.
+///
+/// The stages here are written to push into a [`Write`] while the next one pulls
+/// lines, which is the shape a shell resolves with a pipe. So does this: the
+/// producer runs on its own thread writing into [`std::io::pipe`], and the
+/// caller reads the other end. The pipe's buffer is the only thing held, so a
+/// whole-genome intermediate never exists anywhere, and the two stages overlap
+/// instead of taking turns.
+///
+/// Upstream does the same where it can, `awk ... | bedtools merge -i -`, and
+/// files the rest. The files this replaces are the ones it deletes on the way
+/// out, so nothing observable changes.
+///
+/// The producer's error is not lost: a failure closes the pipe, the reader sees
+/// end of input, and the last item yielded is that error.
+///
+/// # Errors
+/// Returns an error if the pipe cannot be created.
+pub fn piped_lines<F>(producer: F) -> io::Result<PipedLines>
+where
+    F: FnOnce(&mut dyn Write) -> io::Result<()> + Send + 'static,
+{
+    // Buffered on both sides. A pipe write is a syscall, and these stages emit
+    // a line at a time: unbuffered, a million-line intermediate cost a million
+    // syscalls and ran three times slower than the file it replaced.
+    const PIPE_BUFFER: usize = 1 << 18;
+
+    let (reader, writer) = std::io::pipe()?;
+    let handle = std::thread::spawn(move || {
+        let mut writer = BufWriter::with_capacity(PIPE_BUFFER, writer);
+        let result = producer(&mut writer).and_then(|()| writer.flush());
+        // Dropped before the result is handed back, so the reader reaches end
+        // of input rather than blocking on a writer that has finished.
+        drop(writer);
+        result
+    });
+    Ok(PipedLines {
+        lines: BufReader::with_capacity(PIPE_BUFFER, reader).lines(),
+        handle: Some(handle),
+    })
+}
+
+/// The lines of a stage running on another thread. See [`piped_lines`].
+pub struct PipedLines {
+    lines: std::io::Lines<BufReader<std::io::PipeReader>>,
+    handle: Option<std::thread::JoinHandle<io::Result<()>>>,
+}
+
+impl Iterator for PipedLines {
+    type Item = io::Result<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(line) = self.lines.next() {
+            return Some(line);
+        }
+        // End of input. Whether that is success or a producer that died is
+        // only knowable by joining, so join here and report it as the last
+        // item rather than swallowing it.
+        let handle = self.handle.take()?;
+        match handle.join() {
+            Ok(Ok(())) => None,
+            Ok(Err(e)) => Some(Err(e)),
+            Err(_) => Some(Err(io::Error::other("a pipeline stage panicked"))),
+        }
+    }
+}
+
+#[cfg(test)]
+mod piped_tests {
+    use super::*;
+
+    #[test]
+    fn a_stage_reaches_the_next_one_without_a_file() {
+        let lines: Vec<String> = piped_lines(|out| {
+            for i in 0..10_000 {
+                writeln!(out, "chr1\t{i}\t{}", i + 100)?;
+            }
+            Ok(())
+        })
+        .expect("pipe")
+        .map(|l| l.expect("line"))
+        .collect();
+
+        assert_eq!(lines.len(), 10_000);
+        assert_eq!(lines[0], "chr1\t0\t100");
+        assert_eq!(lines[9_999], "chr1\t9999\t10099");
+    }
+
+    /// More than the pipe buffer holds, so the producer blocks and the two
+    /// really do run at once rather than one filling a buffer for the other.
+    #[test]
+    fn the_producer_is_not_bounded_by_the_pipe_buffer() {
+        let count = piped_lines(|out| {
+            for i in 0..200_000 {
+                writeln!(out, "{i:060}")?;
+            }
+            Ok(())
+        })
+        .expect("pipe")
+        .flatten()
+        .count();
+        assert_eq!(count, 200_000, "12 MB through a 64 KB pipe");
+    }
+
+    /// A stage that fails must not look like a stage that finished, which is
+    /// the whole reason the join result is reported rather than dropped.
+    #[test]
+    fn a_failing_stage_surfaces_its_error() {
+        let mut lines = piped_lines(|out| {
+            writeln!(out, "one")?;
+            Err(io::Error::other("the stage gave up"))
+        })
+        .expect("pipe");
+
+        assert_eq!(lines.next().expect("first").expect("ok"), "one");
+        let err = lines
+            .next()
+            .expect("the error, not the end")
+            .expect_err("should be an error");
+        assert!(err.to_string().contains("gave up"), "got: {err}");
+    }
+}
