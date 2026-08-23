@@ -462,3 +462,50 @@ mod piped_tests {
         assert!(err.to_string().contains("gave up"), "got: {err}");
     }
 }
+
+/// Lowercase hex, two digits a byte, no separator.
+///
+/// This is what `format!("{:x}", digest)` produced while `RustCrypto` returned a
+/// `GenericArray`. Its 0.11 releases return a `hybrid_array::Array` instead,
+/// which does not implement `LowerHex`, so the formatting has to be written
+/// out. Doing it here rather than at each call site is what keeps the two
+/// digests in this crate spelled the same way.
+///
+/// The spelling is not cosmetic. `merge_pairs` feeds the MD5 of every input
+/// line to RANDLIB as a seed phrase, so a change of case or width would change
+/// every extended read's length and every number downstream of it.
+#[must_use]
+pub fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        // Cannot fail: writing to a String.
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+#[cfg(test)]
+mod hex_tests {
+    use md5::{Digest, Md5};
+
+    use super::*;
+
+    /// Pinned against the digests themselves rather than against the old
+    /// formatting, so this stays true whatever `RustCrypto` returns next.
+    #[test]
+    fn the_spelling_is_lowercase_and_two_digits_a_byte() {
+        assert_eq!(hex(&[]), "");
+        assert_eq!(hex(&[0x00]), "00", "a leading zero is kept");
+        assert_eq!(hex(&[0x0f, 0xff]), "0fff");
+        assert_eq!(hex(&[0xde, 0xad, 0xbe, 0xef]), "deadbeef", "lowercase");
+
+        // MD5 of the empty input, which is the seed phrase merge_pairs would
+        // build from an empty line. 32 characters, as RANDLIB's phrase length
+        // depends on.
+        let digest = Md5::digest(b"");
+        assert_eq!(hex(&digest), "d41d8cd98f00b204e9800998ecf8427e");
+        assert_eq!(hex(&digest).len(), 32);
+    }
+}

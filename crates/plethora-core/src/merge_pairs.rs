@@ -231,7 +231,7 @@ pub fn measure<I: Iterator<Item = String>>(lines: I) -> Result<FragmentStats, No
 #[must_use]
 pub fn inner_distance_for(line: &str, stats: &FragmentStats) -> i64 {
     let digest = Md5::digest(line.as_bytes());
-    let phrase = format!("{digest:x}");
+    let phrase = crate::io::hex(&digest);
 
     let mut rng = Randlib::new();
     rng.set_seed_from_phrase(phrase.as_bytes());

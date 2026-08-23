@@ -100,7 +100,7 @@ pub fn md5_of(path: &Path) -> std::io::Result<String> {
         }
         hasher.update(&buffer[..read]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(crate::io::hex(&hasher.finalize()))
 }
 
 /// Where a sample's files go: `fastq/<sample>/`.

@@ -73,6 +73,21 @@ impl Manifest {
     }
 }
 
+/// Lowercase hex, two digits a byte.
+///
+/// `format!("{:x}", digest)` did this while `RustCrypto` returned a
+/// `GenericArray`; its 0.11 releases return a `hybrid_array::Array`, which does
+/// not implement `LowerHex`.
+fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
 /// The three numbers a vendored file is checked against.
 pub struct Digested {
     pub sha256: String,
@@ -102,7 +117,7 @@ pub fn digest(mut reader: impl std::io::Read) -> Result<Digested> {
         }
     }
     Ok(Digested {
-        sha256: format!("{:x}", hasher.finalize()),
+        sha256: hex(&hasher.finalize()),
         bytes,
         lines,
     })
