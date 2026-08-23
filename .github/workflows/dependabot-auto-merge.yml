@@ -1,0 +1,64 @@
+# Merges dependabot's patch and minor updates once CI passes, and leaves the
+# rest alone.
+#
+# The line is drawn at major on purpose, and it was drawn by an actual
+# incident rather than by convention. The first majors this repository ever
+# saw, md-5 and sha2 going to 0.11, changed what `finalize()` returns to a type
+# without `LowerHex`. Three call sites stopped compiling, which CI would have
+# caught; but one of them formats the MD5 that seeds RANDLIB in `merge_pairs`,
+# where a change of case or of zero padding compiles fine and silently produces
+# different copy numbers. That is the class of change that wants reading, and no
+# green tick substitutes for it.
+#
+# Patch and minor are a different matter. The suite checks most stages against
+# the tool they replace, running for real, and `xtask compare` diffs the whole
+# chain against upstream's scripts, so a bump that moves a number does not reach
+# main quietly.
+name: Dependabot auto-merge
+
+on: pull_request
+
+# Dependabot's token is read-only unless the workflow asks otherwise.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Auto-merge patch and minor updates
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      # The pull request title is not evidence of the update type. This reads it
+      # from dependabot itself.
+      - name: Read what dependabot is proposing
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # `--auto` queues the merge behind the branch's required checks rather
+      # than merging now. Without those checks configured on main it would
+      # merge immediately, which would be worse than having no auto-merge at
+      # all; see the note in the pull request that added this.
+      - name: Queue the merge behind CI
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Say why a major was left alone
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        run: |
+          gh pr comment "$PR_URL" --body \
+            "Left for a human: this is a major update, and majors are not \
+            auto-merged here. A green CI shows it still compiles and that the \
+            differential tests still agree, which is not the same as showing \
+            the change is safe. \`merge_pairs\` seeds RANDLIB from a formatted \
+            MD5, so a dependency can alter results without failing anything."
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
