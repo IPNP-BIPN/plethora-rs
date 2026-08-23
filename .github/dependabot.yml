@@ -1,0 +1,50 @@
+# Dependency updates, opened weekly.
+#
+# The suite this repository carries is unusually good at catching a bad bump:
+# most stages are checked against the tool they replace, running for real, and
+# `xtask compare` diffs the whole chain against upstream's own scripts. So an
+# update that changes a number does not land quietly, and updating eagerly costs
+# little.
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # These five must move together or the workspace does not build: they
+      # share types across crate boundaries, so a `noodles_sam::Header` from one
+      # version is not the `noodles_sam::Header` another expects. Ungrouped,
+      # dependabot would open five pull requests that each fail on their own.
+      noodles:
+        patterns:
+          - noodles-*
+      # Everything else, as one pull request per week rather than one per crate.
+      # Split by kind so a patch bump, which is the common case and nearly
+      # always safe here, is not held up behind a minor one that wants reading.
+      patch:
+        update-types:
+          - patch
+      minor:
+        update-types:
+          - minor
+    # A major bump belongs to no group on purpose, so each one arrives as its
+    # own pull request. Those are the ones that need reading rather than
+    # merging, and trim-galore or noodles changing major is a reason to look at
+    # what the parity tests say afterwards.
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns:
+          - "*"
