@@ -1670,19 +1670,6 @@ dependencies = [
 
 [[package]]
 name = "noodles-csi"
-version = "0.60.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32789eeba9c4001d50de853a4c6a8f0551d586a91d6919c0008dd462231feacb"
-dependencies = [
- "bit-vec 0.10.1",
- "bstr",
- "indexmap",
- "noodles-bgzf 0.51.0",
- "noodles-core 0.20.0",
-]
-
-[[package]]
-name = "noodles-csi"
 version = "0.61.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59b884d95b1c04066f2364201f4ba126b1fdc590841745c226952c424fceeb02"
@@ -1720,22 +1707,6 @@ dependencies = [
  "noodles-bgzf 0.35.0",
  "noodles-core 0.16.0",
  "noodles-csi 0.42.0",
-]
-
-[[package]]
-name = "noodles-sam"
-version = "0.89.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8063dd9e92825db46ae21813525589d41cff9ce2dcb2a0d25d99af86b274a1c5"
-dependencies = [
- "bitflags 2.13.1",
- "bstr",
- "indexmap",
- "lexical-core",
- "memchr",
- "noodles-bgzf 0.51.0",
- "noodles-core 0.20.0",
- "noodles-csi 0.60.0",
 ]
 
 [[package]]
@@ -1892,7 +1863,7 @@ dependencies = [
  "noodles-bgzf 0.51.0",
  "noodles-core 0.20.0",
  "noodles-fasta",
- "noodles-sam 0.89.0",
+ "noodles-sam 0.90.0",
  "plethora-compat",
  "rapidgzip-core",
  "rayon",
