@@ -30,7 +30,7 @@ plethora-compat = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 
-noodles-bam = "0.94"
+noodles-bam = "0.95"
 noodles-bgzf = "0.51"
 noodles-core = "0.20"
 noodles-fasta = "0.66"
