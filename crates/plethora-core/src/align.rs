@@ -157,7 +157,7 @@ pub fn align(options: &Options, output: &Path) -> Result<(), Error> {
     // not.
     let sam_path = output.with_extension("sam.tmp.gz");
     let result = run_aligner(options, &sam_path)
-        .and_then(|()| sam_to_bam(&sam_path, output).map_err(Error::Convert));
+        .and_then(|()| sam_to_bam(&sam_path, output, options.threads).map_err(Error::Convert));
     let _ = std::fs::remove_file(&sam_path);
     result
 }
@@ -184,18 +184,27 @@ fn run_aligner(options: &Options, sam_path: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-/// Transcodes SAM to BAM, record for record.
-fn sam_to_bam(sam_path: &Path, output: &Path) -> std::io::Result<()> {
+/// Transcodes SAM to BAM, record for record, compressing on `threads` workers.
+fn sam_to_bam(sam_path: &Path, output: &Path, threads: usize) -> std::io::Result<()> {
     let mut reader = sam::io::Reader::new(crate::io::open(sam_path)?);
     let header = read_header(&mut reader)?;
 
-    let mut writer = bam::io::Writer::new(std::fs::File::create(output)?);
+    // BGZF compression is nearly all of this pass: on 500,000 GIAB pairs a single-threaded
+    // writer took 4.7 s, longer than aligning them on 8 threads, and 8 workers take 0.96 s.
+    // Default level, unlike `crate::io::create`: this BAM is the output, not an intermediate.
+    let workers = std::num::NonZero::new(threads).unwrap_or(std::num::NonZero::<usize>::MIN);
+    let bgzf = noodles_bgzf::io::multithreaded_writer::Builder::default()
+        .set_worker_count(workers)
+        .build_from_writer(std::fs::File::create(output)?);
+    let mut writer = bam::io::Writer::from(bgzf);
     writer.write_alignment_header(&header)?;
 
     let mut record = sam::Record::default();
     while reader.read_record(&mut record)? != 0 {
         writer.write_alignment_record(&header, &record)?;
     }
+    // Explicitly, because dropping the writer would discard a failed final write.
+    writer.into_inner().finish()?;
     Ok(())
 }
 
@@ -278,7 +287,7 @@ mod tests {
         let bam_path = dir.path().join("out.bam");
         std::fs::write(&sam_path, sam()).expect("write sam");
 
-        sam_to_bam(&sam_path, &bam_path).expect("transcode");
+        sam_to_bam(&sam_path, &bam_path, 2).expect("transcode");
 
         let out = Command::new("samtools")
             .arg("view")
@@ -304,8 +313,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let sam_path = dir.path().join("in.sam");
         std::fs::write(&sam_path, "@HD\tVN:1.6\n").expect("write");
-        let err =
-            sam_to_bam(&sam_path, &dir.path().join("out.bam")).expect_err("no reference sequences");
+        let err = sam_to_bam(&sam_path, &dir.path().join("out.bam"), 2)
+            .expect_err("no reference sequences");
         assert!(
             err.to_string().contains("@SQ"),
             "the message should name what is missing, got: {err}"
