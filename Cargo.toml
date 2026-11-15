@@ -40,6 +40,9 @@ needless_range_loop = "allow"
 float_cmp = "allow"
 assign_op_pattern = "allow"
 too_many_lines = "allow"
+# New in clippy 1.100: wants `assert_eq!(x, [] as [T; 0])` for `assert!(x.is_empty())`,
+# which spells out an element type in every empty-collection test for no gain.
+assert_is_empty = "allow"
 
 [profile.release]
 opt-level = 3
