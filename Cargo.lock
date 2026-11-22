@@ -263,9 +263,9 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "bwa-mem4"
-version = "4.4.1"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fa8c71c3cb801c23461b9dfb8d0e5a23a0c41e9a962b5ec20339e7308664183"
+checksum = "62672c74523dedb8d9f6270b58021951b16a4f771932b054bbff680cd7524f4e"
 dependencies = [
  "anyhow",
  "bgzf",
@@ -282,35 +282,36 @@ dependencies = [
 
 [[package]]
 name = "bwa-mem4-chain"
-version = "4.4.1"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57f80b2d8671d8661dbc3e7283fe1fc73c7467f615d43c340ed8017455336819"
+checksum = "af54036f4a04bbe2cdca25e36d4363733055fe13eb9bf2f6aaf3fde2fb2242eb"
 dependencies = [
  "bwa-mem4-core",
  "bwa-mem4-index",
  "bwa-mem4-seed",
+ "smallvec",
 ]
 
 [[package]]
 name = "bwa-mem4-core"
-version = "4.4.1"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bd275d6ae008c338ce9b57759757258dc238a24809b3da865d1943a0c9d0053"
+checksum = "19f32eff0ee3610b3559fe3e8e4c84c33f254c29afd1548818f22175ce1c37e5"
 dependencies = [
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "bwa-mem4-extend"
-version = "4.4.1"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87cc57418b13f2364a789c28b2755da096908a5d7060339aeb2b8cfb267f2d30"
+checksum = "7b406feb1e9e92844662ed2cf29f37d589de461f8b4a49aff88a83c3ef7216fd"
 
 [[package]]
 name = "bwa-mem4-index"
-version = "4.4.1"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd6d047a9783302c762050c69def1b909937622284afe67d2c496be63ede970b"
+checksum = "9caaf4946edcb1b2749e9d98c2d08aee143ab4fe16993679430f5f9524f3ba59"
 dependencies = [
  "bwa-mem4-core",
  "libsais",
@@ -320,9 +321,9 @@ dependencies = [
 
 [[package]]
 name = "bwa-mem4-io"
-version = "4.4.1"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63a9f6cb61b31e929e644cb7d81fece6be26e8a5a331fa6cbb1ad4edfec23c56"
+checksum = "2bd7f3d149ece2a409230cd3a0fa946059776eea59f0e2de3cd5018f705b2e30"
 dependencies = [
  "bwa-mem4-core",
  "flate2",
@@ -332,9 +333,9 @@ dependencies = [
 
 [[package]]
 name = "bwa-mem4-mem"
-version = "4.4.1"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "336d2a83cdcbdb30ab772cf39ce1b99e799419d82efdc5aca8ee387faddda471"
+checksum = "0ae31a9d69f5d2d12bbe6766c9dde171f09151a13e40d060d26e9a00a1b6d718"
 dependencies = [
  "bwa-mem4-chain",
  "bwa-mem4-core",
@@ -342,22 +343,23 @@ dependencies = [
  "bwa-mem4-index",
  "bwa-mem4-neon",
  "bwa-mem4-seed",
+ "smallvec",
 ]
 
 [[package]]
 name = "bwa-mem4-neon"
-version = "4.4.1"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "feb14c92faded6bb00321e3872221620b6db3dcfcb71c3643d8287153b7d239c"
+checksum = "9df26c4b450d5b0c2c1829e3973ef62781f38b3150f9a8c04a82908877b87b59"
 dependencies = [
  "bwa-mem4-extend",
 ]
 
 [[package]]
 name = "bwa-mem4-seed"
-version = "4.4.1"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "440d151ca9ffc06b692912b423db7f8bdc37f36b90793837164b3b2b1cd67131"
+checksum = "3c538664d6d55de0d1da8657aaa2a136b049a34dbc1b7f0b526684c5e3734529"
 dependencies = [
  "bwa-mem4-core",
  "bwa-mem4-index",
@@ -2477,9 +2479,9 @@ checksum = "009dbb7700f11c55ef83aebbe4c0e9cf1f1ac0844bd8d6f00dc38f302026e13a"
 
 [[package]]
 name = "trim-galore"
-version = "2.4.0"
+version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff88938136f7ea9f0452674396fa8f49432c5109963b64ace99727efbf61a79a"
+checksum = "a84d318cd2d6399f674bc81b9c72999ec9c67422bf6d5ece01a5e3e97ebc6e8e"
 dependencies = [
  "anyhow",
  "clap",
@@ -2487,8 +2489,6 @@ dependencies = [
  "fastqc-rust",
  "flate2",
  "gzp",
- "log",
- "memchr",
  "mimalloc",
  "noodles",
 ]
